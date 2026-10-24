@@ -4,7 +4,7 @@ A small Python student-record application with a Tkinter desktop interface and S
 
 ## Current application
 
-- **`Student.py`** — desktop UI with create, search, update, delete, listing, grade, report-card, and text-file import/export actions.
+- **`Student.py`** — maintained desktop UI with create, search, update, delete, listing, grade, report-card, and CSV import/export actions. It uses a scrollable student table; selecting a row loads the record into the form.
 - **`student_data_io.py`** — shared CSV import/export logic, including compatibility with legacy unquoted names and average recomputation.
 - **`Student Management System.py`** — older terminal-menu version that keeps its data in memory until saved.
 - **`Student Management System Final.py`** — earlier minimal Tkinter variant.
