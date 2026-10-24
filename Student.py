@@ -43,14 +43,32 @@ def add_student():
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
 
-def display_students():
-    cursor.execute('SELECT * FROM students')
+def display_students(sort_by_average=False):
+    order_clause = "average_marks DESC, roll_number" if sort_by_average else "roll_number"
+    cursor.execute(
+        "SELECT roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
+        "marks_subject4, marks_subject5, average_marks FROM students ORDER BY " + order_clause
+    )
     students = cursor.fetchall()
-    result_text.set('')
+
+    for item in student_tree.get_children():
+        student_tree.delete(item)
 
     for student in students:
-        result_text.set(result_text.get() +
-                       f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}\n")
+        roll_number, name, *scores = student
+        formatted_scores = [
+            "" if score is None else f"{float(score):.2f}"
+            for score in scores
+        ]
+        student_tree.insert(
+            "", "end",
+            values=(roll_number, name or "", *formatted_scores),
+        )
+
+    if "result_label" in globals():
+        result_label.configure(
+            text=f"Student records: {len(students)}. Select a row to load it into the form."
+        )
 
 
 def clear_entries():
@@ -60,13 +78,49 @@ def clear_entries():
         entry.delete(0, tk.END)
 
 
+def select_student_in_table(roll_number):
+    for item in student_tree.get_children():
+        values = student_tree.item(item, "values")
+        if values and str(values[0]).strip() == roll_number:
+            student_tree.selection_set(item)
+            student_tree.focus(item)
+            student_tree.see(item)
+            load_selected_student()
+            return True
+    return False
+
+
+def load_selected_student(event=None):
+    selected = student_tree.selection()
+    if not selected:
+        return
+    values = student_tree.item(selected[0], "values")
+    if len(values) < 8:
+        return
+
+    clear_entries()
+    entry_roll.insert(0, values[0])
+    entry_name.insert(0, values[1])
+    for entry, mark in zip(entry_marks, values[2:7]):
+        entry.insert(0, mark)
+
+
 def search_student():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter a roll number to search.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
     if student:
-        messagebox.showinfo('Student Found', f"Roll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}")
+        display_students()
+        select_student_in_table(roll_number)
+        messagebox.showinfo(
+            'Student Found',
+            f"Roll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
+        )
     else:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
 
@@ -131,16 +185,18 @@ def calculate_grades():
 
 
 def sort_students():
-    cursor.execute('SELECT * FROM students ORDER BY average_marks DESC')
+    cursor.execute('SELECT * FROM students ORDER BY average_marks DESC, roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to sort.')
-    else:
-        sorted_text = 'Students sorted by Average Marks:'
-        for student in students:
-            sorted_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
-        messagebox.showinfo('Sorted Students', sorted_text)
+        return
+
+    display_students(sort_by_average=True)
+    sorted_text = 'Students sorted by Average Marks:'
+    for student in students:
+        sorted_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
+    messagebox.showinfo('Sorted Students', sorted_text)
 
 
 def save_to_file():
@@ -189,30 +245,50 @@ def load_from_file():
 
 
 def view_student_details():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter a roll number to view details.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
     if student:
-        details_text = f"\nStudent Details - Roll Number: {student[0]}\nName: {student[1]}\nMarks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\nAverage Marks: {student[7]:.2f}"
+        select_student_in_table(roll_number)
+        details_text = (
+            f"Student Details - Roll Number: {student[0]}\nName: {student[1]}\n"
+            f"Marks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\n"
+            f"Average Marks: {student[7]:.2f}"
+        )
         messagebox.showinfo('Student Details', details_text)
     else:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
 
 
 def remove_student():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter the roll number of the student to remove.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
-    if student:
-        cursor.execute('DELETE FROM students WHERE roll_number=?', (roll_number,))
-        conn.commit()
-        messagebox.showinfo('Success', f"Student with Roll Number {roll_number} removed successfully!")
-        clear_entries()
-        display_students()
-    else:
+    if not student:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
+        return
+
+    if not messagebox.askyesno(
+        'Confirm Removal',
+        f"Remove student {student[1]} (roll number {student[0]})? This cannot be undone."
+    ):
+        return
+
+    cursor.execute('DELETE FROM students WHERE roll_number=?', (roll_number,))
+    conn.commit()
+    messagebox.showinfo('Success', f"Student with Roll Number {roll_number} removed successfully!")
+    clear_entries()
+    display_students()
 
 
 def generate_report_cards():
