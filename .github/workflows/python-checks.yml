@@ -11,11 +11,12 @@ permissions:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,96 +28,3 @@ jobs:
         run: python -m compileall -q .
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-      - name: Read-only audit of tracked database and historical screenshots
-        if: matrix.python-version == '3.12'
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile, ZIP_DEFLATED
-          import hashlib
-          import math
-          import re
-          import sqlite3
-
-          db_path = Path("students_database.db")
-          summary = [
-              f"Database bytes: {db_path.stat().st_size}",
-              f"Database SHA-256: {hashlib.sha256(db_path.read_bytes()).hexdigest()}",
-          ]
-          connection = sqlite3.connect(f"file:{db_path.resolve()}?mode=ro", uri=True)
-          try:
-              integrity = connection.execute("PRAGMA integrity_check").fetchone()
-              summary.append(f"SQLite integrity_check: {integrity[0] if integrity else 'no result'}")
-              tables = [
-                  row[0] for row in connection.execute(
-                      "SELECT name FROM sqlite_master WHERE type='table' "
-                      "AND name NOT LIKE 'sqlite_%' ORDER BY name"
-                  )
-              ]
-              summary.append("Tables: " + (", ".join(tables) if tables else "(none)"))
-              if "students" in tables:
-                  columns = [row[1] for row in connection.execute("PRAGMA table_info(students)")]
-                  summary.append("Student table columns: " + ", ".join(columns))
-                  rows = connection.execute(
-                      "SELECT roll_number, name, marks_subject1, marks_subject2, "
-                      "marks_subject3, marks_subject4, marks_subject5, average_marks "
-                      "FROM students"
-                  ).fetchall()
-                  summary.append(f"Student row count: {len(rows)}")
-                  placeholder = re.compile(
-                      r"^(student(?:\s*\d+)?|test(?:\s+student)?|demo(?:\s+student)?|sample(?:\s+student)?)$",
-                      re.IGNORECASE,
-                  )
-                  placeholder_count = sum(
-                      bool(placeholder.fullmatch(str(row[1] or "").strip()))
-                      for row in rows
-                  )
-                  summary.append(
-                      f"Blank identity rows: {sum(not str(row[0] or '').strip() or not str(row[1] or '').strip() for row in rows)}"
-                  )
-                  summary.append(
-                      f"Generic placeholder-like names: {placeholder_count} of {len(rows)}"
-                  )
-                  invalid_marks = 0
-                  stale_averages = 0
-                  for row in rows:
-                      try:
-                          marks = [float(value) for value in row[2:7]]
-                          average = float(row[7])
-                          if not all(math.isfinite(value) and 0 <= value <= 100 for value in marks):
-                              invalid_marks += 1
-                          if (
-                              not math.isfinite(average)
-                              or not 0 <= average <= 100
-                              or abs(sum(marks) / 5 - average) >= 0.00001
-                          ):
-                              stale_averages += 1
-                      except (TypeError, ValueError):
-                          invalid_marks += 1
-                          stale_averages += 1
-                  summary.append(f"Rows with invalid subject marks: {invalid_marks}")
-                  summary.append(f"Rows with stale/invalid averages: {stale_averages}")
-          finally:
-              connection.close()
-
-          images = sorted(Path(".").glob("IMG-20240801-WA*.jpg"))
-          summary.append(f"Historical JPEG images found: {len(images)}")
-          summary.append(f"Historical JPEG total bytes: {sum(path.stat().st_size for path in images)}")
-          summary.append("Image filenames are not interpreted as evidence of privacy safety.")
-          Path("privacy-audit-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
-          with ZipFile("repository-images-audit.zip", "w", ZIP_DEFLATED) as archive:
-              for path in images:
-                  archive.write(path, arcname=path.name)
-          with ZipFile("repository-privacy-audit.zip", "w", ZIP_DEFLATED) as archive:
-              archive.write("privacy-audit-summary.txt")
-              archive.write("repository-images-audit.zip")
-          print(Path("privacy-audit-summary.txt").read_text(encoding="utf-8"))
-          print("No student names or roll numbers are printed in the audit log.")
-          PY
-      - name: Upload short-lived privacy audit artifact
-        if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
-        with:
-          name: repository-privacy-audit
-          path: repository-privacy-audit.zip
-          retention-days: 1
