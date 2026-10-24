@@ -228,8 +228,15 @@ class DatabaseStorageTests(unittest.TestCase):
                 source, "S-INVALID", "Broken Record", marks=(10, 20, 30, 40, 101), average=40.2
             )
 
-            with self.assertRaisesRegex(StorageError, "student record 1"):
-                connect_database(target, legacy_path=source)
+            # Legacy rows outside today's rules must not block access to the old table.
+            connection = connect_database(target, legacy_path=source)
+            try:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 0)
+                self.assertEqual(
+                    connection.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
+                )
+            finally:
+                connection.close()
 
             with sqlite3.connect(source) as original:
                 self.assertEqual(
