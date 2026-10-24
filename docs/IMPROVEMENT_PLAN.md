@@ -41,8 +41,8 @@ Each task is intended to be completed and validated before progressing. Keep cha
 | ID | Priority | Task | Completion criteria | Status |
 | --- | --- | --- | --- | --- |
 | A0 | P0 | Establish a written audit inventory and prioritized plan | Inventory, confirmed defects, acceptance criteria and scope are recorded | Done |
-| A1 | P1 | Repair terminal save/load round-tripping | CSV round-trips all five marks, names with commas, and average recomputation; malformed imports fail without partial mutation; automated regression tests pass | In progress |
-| A2 | P1 | Complete core validation across all entry points | Both CLI and GUI reject invalid/missing marks and identifiers without crashing; shared grading logic is used consistently | Planned |
+| A1 | P1 | Repair terminal save/load round-tripping | CSV round-trips all five marks, names with commas, and average recomputation; malformed imports fail without partial mutation; automated regression tests pass | Done |
+| A2 | P1 | Complete core validation across all entry points | Both CLI and GUI reject invalid/missing marks and identifiers without crashing; shared grading logic is used consistently | In progress |
 | A3 | P1 | Make persistence safe and testable | Explicit application-data path, safe one-time migration behavior, clear error paths, and tests using temporary databases; no silent data loss | Planned |
 | A4 | P1 | Resolve tracked database/privacy exposure | Decide whether the tracked database is genuine demo data; remove/sanitize it from the delivered tree only with a data-preserving migration plan; document that history needs separate cleanup | Planned |
 | A5 | P2 | Improve desktop CRUD workflow | Scrollable table, responsive button layout, selecting a row populates fields, clear success/error feedback, and delete confirmation | Planned |
