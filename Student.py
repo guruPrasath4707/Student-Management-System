@@ -4,7 +4,13 @@ import tkinter.font as tkfont
 import sqlite3
 import math
 
-from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks, validate_student_identity
+from student_core import (
+    calculate_average as calculate_marks_average,
+    grade_for_average,
+    inspect_student_marks,
+    parse_marks,
+    validate_student_identity,
+)
 from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Open the per-user database, migrating the old working-directory file once when present.
@@ -49,16 +55,6 @@ def add_student():
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
 
-def _as_valid_mark(value):
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(score) or not 0 <= score <= 100:
-        return None
-    return score
-
-
 def _format_score(value):
     if value is None:
         return ""
@@ -73,9 +69,17 @@ def display_students(sort_by_average=False):
     order_clause = "average_marks DESC, roll_number" if sort_by_average else "roll_number"
     cursor.execute(
         "SELECT roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
-        "marks_subject4, marks_subject5, average_marks FROM students ORDER BY " + order_clause
+        "marks_subject4, marks_subject5, average_marks FROM students ORDER BY roll_number"
     )
     students = cursor.fetchall()
+    if sort_by_average:
+        def sort_key(record):
+            marks_valid, _average_stale, computed_average = inspect_student_marks(
+                record[2:7], record[7]
+            )
+            return (not marks_valid, -(computed_average or 0.0), str(record[0] or ""))
+
+        students.sort(key=sort_key)
 
     for item in student_tree.get_children():
         student_tree.delete(item)
@@ -84,22 +88,15 @@ def display_students(sort_by_average=False):
     review_count = 0
     for student in students:
         roll_number, name, *scores = student
-        marks = [_as_valid_mark(score) for score in scores[:5]]
-        marks_are_valid = all(mark is not None for mark in marks)
-        stored_average = _as_valid_mark(scores[5])
-        average_is_stale = (
-            stored_average is None
-            or (
-                marks_are_valid
-                and abs(sum(marks) / 5.0 - stored_average) >= 0.00001
-            )
+        marks_are_valid, average_is_stale, computed_average = inspect_student_marks(
+            scores[:5], scores[5]
         )
         identity_is_invalid = not str(roll_number or "").strip() or not str(name or "").strip()
         needs_review = identity_is_invalid or not marks_are_valid or average_is_stale
         if legacy_needs_review and needs_review:
             review_count += 1
 
-        displayed_average = sum(marks) / 5.0 if marks_are_valid else scores[5]
+        displayed_average = computed_average if marks_are_valid else scores[5]
         formatted_scores = [_format_score(score) for score in scores[:5]]
         formatted_scores.append(_format_score(displayed_average))
         student_tree.insert(
@@ -208,31 +205,50 @@ def update_student():
     display_students()
 
 def calculate_average():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to calculate average marks.')
-    else:
-        average_text = 'Average Marks of all students:'
-        for student in students:
-            average_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
-        messagebox.showinfo('Average Marks', average_text)
+        return
+
+    average_text = 'Average marks recalculated from subject marks:'
+    for student in students:
+        marks_valid, _average_stale, computed_average = inspect_student_marks(
+            student[2:7], student[7]
+        )
+        average_text += (
+            f"\nRoll Number: {student[0]}, Name: {student[1]}, "
+            f"Average Marks: {computed_average:.2f}"
+            if marks_valid
+            else f"\nRoll Number: {student[0]}, Name: {student[1]}, Needs review (invalid marks)"
+        )
+    messagebox.showinfo('Average Marks', average_text)
 
 
 def calculate_grades():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to calculate grades.')
-    else:
-        grades_text = 'Grades of all students:'
-        for student in students:
-            average_marks = student[7]
-            grade = grade_for_average(average_marks)
-            grades_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Grade: {grade}"
-        messagebox.showinfo('Grades', grades_text)
+        return
+
+    grades_text = 'Grades calculated from current subject marks:'
+    for student in students:
+        marks_valid, _average_stale, computed_average = inspect_student_marks(
+            student[2:7], student[7]
+        )
+        if marks_valid:
+            grade = grade_for_average(computed_average)
+            line = f"\nRoll Number: {student[0]}, Name: {student[1]}, Grade: {grade}"
+        else:
+            line = (
+                f"\nRoll Number: {student[0]}, Name: {student[1]}, "
+                "Grade: Needs review (invalid marks)"
+            )
+        grades_text += line
+    messagebox.showinfo('Grades', grades_text)
 
 
 def sort_students():
@@ -339,19 +355,28 @@ def remove_student():
 
 
 def generate_report_cards():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to generate report cards.')
-    else:
-        report_text = 'Report Cards for all students:'
-        for student in students:
-            report_text += f"\n\nRoll Number: {student[0]}\nName: {student[1]}\nAverage Marks: {student[7]:.2f}\n"
-            average_marks = student[7]
-            grade = grade_for_average(average_marks)
-            report_text += f"Grade: {grade}\nSubject-wise Marks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\nTotal Marks: {sum(student[2:7])}\n"
-        messagebox.showinfo('Report Cards', report_text)
+        return
+
+    report_text = 'Report Cards recalculated from current subject marks:'
+    for student in students:
+        marks = student[2:7]
+        marks_valid, _average_stale, computed_average = inspect_student_marks(marks, student[7])
+        report_text += f"\n\nRoll Number: {student[0]}\nName: {student[1]}\n"
+        report_text += f"Subject-wise Marks: {', '.join(_format_score(mark) for mark in marks)}\n"
+        if marks_valid:
+            grade = grade_for_average(computed_average)
+            report_text += (
+                f"Average Marks: {computed_average:.2f}\nGrade: {grade}\n"
+                f"Total Marks: {sum(float(mark) for mark in marks):.2f}\n"
+            )
+        else:
+            report_text += "Average Marks: Needs review\nGrade: Needs review\nTotal Marks: unavailable\n"
+    messagebox.showinfo('Report Cards', report_text)
 
 
 # Build the desktop interface.
