@@ -4,24 +4,19 @@ import sqlite3
 
 from student_core import calculate_average as calculate_marks_average, parse_marks, validate_student_identity
 
-# Create a SQLite database connection
-conn = sqlite3.connect('students_database.db')
-cursor = conn.cursor()
+# Open the per-user database, migrating the old working-directory file once when present.
+from student_storage import StorageError, connect_database
 
-# Create a table to store student information
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS students (
-        roll_number TEXT PRIMARY KEY,
-        name TEXT,
-        marks_subject1 REAL,
-        marks_subject2 REAL,
-        marks_subject3 REAL,
-        marks_subject4 REAL,
-        marks_subject5 REAL,
-        average_marks REAL
-    )
-''')
-conn.commit()
+try:
+    conn = connect_database()
+except (StorageError, OSError) as exc:
+    error_root = tk.Tk()
+    error_root.withdraw()
+    messagebox.showerror('Database Error', f"Could not open the student database: {exc}", parent=error_root)
+    error_root.destroy()
+    raise SystemExit(1) from exc
+
+cursor = conn.cursor()
 
 
 def add_student():
