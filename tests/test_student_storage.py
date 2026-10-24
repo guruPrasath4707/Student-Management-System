@@ -56,7 +56,7 @@ class DatabasePathTests(unittest.TestCase):
 
 
 class DatabaseStorageTests(unittest.TestCase):
-    def create_database(self, path: Path, roll_number: str, name: str) -> None:
+    def create_database(self, path: Path, roll_number: str, name: str, marks=(10, 20, 30, 40, 50), average=30) -> None:
         connection = sqlite3.connect(path)
         try:
             connection.execute("""
@@ -73,7 +73,7 @@ class DatabaseStorageTests(unittest.TestCase):
             """)
             connection.execute(
                 "INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (roll_number, name, 10, 20, 30, 40, 50, 30),
+                (roll_number, name, *marks, average),
             )
             connection.commit()
         finally:
@@ -161,6 +161,92 @@ class DatabaseStorageTests(unittest.TestCase):
             with self.assertRaisesRegex(StorageError, "no students table"):
                 connect_database(target, legacy_path=source)
             self.assertFalse(target.exists())
+
+
+    def test_upgrades_legacy_schema_recomputes_averages_and_sets_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            source = base / "legacy.db"
+            target = base / "app.db"
+            self.create_database(
+                source, "S-STALE", "Legacy Student", marks=(10, 20, 30, 40, 50), average=99
+            )
+
+            connection = connect_database(target, legacy_path=source)
+            try:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 1)
+                row = connection.execute(
+                    "SELECT roll_number, name, marks_subject1, marks_subject2, "
+                    "marks_subject3, marks_subject4, marks_subject5, average_marks "
+                    "FROM students"
+                ).fetchone()
+                self.assertEqual(row, ("S-STALE", "Legacy Student", 10.0, 20.0, 30.0, 40.0, 50.0, 30.0))
+                schema_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='students'"
+                ).fetchone()[0].lower()
+                self.assertIn("check", schema_sql)
+                self.assertIn("not null", schema_sql)
+            finally:
+                connection.close()
+
+            with sqlite3.connect(source) as original:
+                self.assertEqual(
+                    original.execute("SELECT average_marks FROM students").fetchone()[0], 99
+                )
+                self.assertEqual(original.execute("PRAGMA user_version").fetchone()[0], 0)
+
+    def test_constrained_database_rejects_invalid_direct_writes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "app.db"
+            connection = connect_database(target)
+            try:
+                valid_marks = (10, 20, 30, 40, 50)
+                invalid_rows = [
+                    ("", "Name", *valid_marks, 30),
+                    ("S-EMPTY-NAME", "   ", *valid_marks, 30),
+                    ("S-LOW", "Name", -1, 20, 30, 40, 50, 27.8),
+                    ("S-HIGH", "Name", 10, 20, 30, 40, 101, 40.2),
+                    ("S-AVG", "Name", *valid_marks, 31),
+                ]
+                for row in invalid_rows:
+                    with self.subTest(row=row):
+                        with self.assertRaises(sqlite3.IntegrityError):
+                            connection.execute(
+                                "INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?)", row
+                            )
+                        connection.rollback()
+            finally:
+                connection.close()
+
+    def test_invalid_legacy_record_is_not_discarded_during_upgrade(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            source = base / "legacy-invalid.db"
+            target = base / "app.db"
+            self.create_database(
+                source, "S-INVALID", "Broken Record", marks=(10, 20, 30, 40, 101), average=40.2
+            )
+
+            with self.assertRaisesRegex(StorageError, "student record 1"):
+                connect_database(target, legacy_path=source)
+
+            with sqlite3.connect(source) as original:
+                self.assertEqual(
+                    original.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
+                )
+            self.assertTrue(target.exists())
+            with sqlite3.connect(target) as copied:
+                self.assertEqual(
+                    copied.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
+                )
+                self.assertEqual(copied.execute("PRAGMA user_version").fetchone()[0], 0)
+
+    def test_null_identity_fields_are_rejected_by_core_validator(self):
+        from student_core import validate_student_identity
+        for roll_number, name in ((None, "Name"), ("S-NULL-NAME", None)):
+            with self.subTest(roll_number=roll_number, name=name):
+                with self.assertRaises(ValueError):
+                    validate_student_identity(roll_number, name)
 
 
 if __name__ == "__main__":
