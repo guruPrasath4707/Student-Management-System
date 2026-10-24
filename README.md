@@ -58,6 +58,8 @@ Student names, roll numbers, and marks are educational records. Use synthetic da
 
 This is a local desktop project, not a multi-user web service. It does not currently provide authentication, role-based authorization, audit logs, or secure remote access. Do not treat it as a production school information system without a separate security, privacy, backup, and data-integrity review.
 
+For the tracked database, legacy report, and historical screenshots, see [`docs/PRIVACY_REMEDIATION.md`](docs/PRIVACY_REMEDIATION.md) for the owner-approved backup, migration, removal, and optional history-cleanup sequence.
+
 ## Project report status
 
 The root-level Word report is a legacy artifact, not complete project documentation. Its extracted text contains front matter and a table of contents but no substantive chapter content matching the listed sections. It also contains identifying student/school details and inconsistent academic-year labels. Do not reuse or redistribute it until its owner has reviewed and approved redaction. The new technical report in docs/PROJECT_REPORT.md describes the current code without repeating those personal details. The original Word file remains untouched pending an owner-approved decision.
