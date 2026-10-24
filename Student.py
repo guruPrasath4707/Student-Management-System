@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
-import math
 
 from student_core import (
     calculate_average as calculate_marks_average,
@@ -66,7 +65,6 @@ def _format_score(value):
 
 
 def display_students(sort_by_average=False):
-    order_clause = "average_marks DESC, roll_number" if sort_by_average else "roll_number"
     cursor.execute(
         "SELECT roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
         "marks_subject4, marks_subject5, average_marks FROM students ORDER BY roll_number"
