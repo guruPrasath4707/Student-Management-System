@@ -233,8 +233,12 @@ def _upgrade_schema(connection: sqlite3.Connection) -> None:
         connection.execute(f"ALTER TABLE {temporary_table} RENAME TO students")
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         connection.commit()
-    except StorageError:
+    except StorageError as exc:
         connection.rollback()
+        # Keep the original table open and usable when only historical records
+        # violate current input rules. The UI can then let the user correct them.
+        if str(exc).startswith("Cannot safely upgrade student record"):
+            return
         raise
     except (ValueError, sqlite3.DatabaseError) as exc:
         connection.rollback()
@@ -346,6 +350,11 @@ def connect_database(
         if "connection" in locals():
             connection.close()
         raise StorageError(f"Could not open student database at {target}: {exc}") from exc
+
+def get_database_schema_version(connection: sqlite3.Connection) -> int:
+    """Return the application schema marker for startup warnings and diagnostics."""
+    return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
 
 def insert_student_records(
     connection: sqlite3.Connection,
