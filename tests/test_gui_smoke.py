@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GUI_SMOKE_SCRIPT = r"""
 import os
 import runpy
+import sys
 import tkinter as tk
 from tkinter import messagebox
 
@@ -30,7 +31,9 @@ def smoke_mainloop(self, n=0):
 
 tk.Misc.mainloop = smoke_mainloop
 messagebox.showwarning = lambda *args, **kwargs: None
-runpy.run_path(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"], run_name="__main__")
+app_script = os.path.abspath(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"])
+sys.path.insert(0, os.path.dirname(app_script))
+runpy.run_path(app_script, run_name="__main__")
 """
 
 
@@ -67,7 +70,9 @@ tk.Misc.mainloop = smoke_mainloop
 messagebox.showwarning = lambda *args, **kwargs: print("LEGACY_REVIEW_WARNING_SHOWN")
 messagebox.showinfo = lambda *args, **kwargs: None
 messagebox.showerror = lambda *args, **kwargs: print("GUI_ERROR")
-runpy.run_path(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"], run_name="__main__")
+app_script = os.path.abspath(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"])
+sys.path.insert(0, os.path.dirname(app_script))
+runpy.run_path(app_script, run_name="__main__")
 """
 
 
