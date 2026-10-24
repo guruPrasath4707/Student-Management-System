@@ -57,6 +57,10 @@ Student names, roll numbers, and marks are educational records. Use synthetic da
 
 This is a local desktop project, not a multi-user web service. It does not currently provide authentication, role-based authorization, audit logs, or secure remote access. Do not treat it as a production school information system without a separate security, privacy, backup, and data-integrity review.
 
+## Project report status
+
+The root-level Word report is a legacy artifact, not complete project documentation. Its extracted text contains front matter and a table of contents but no substantive chapter content matching the listed sections. It also contains identifying student/school details and inconsistent academic-year labels. Do not reuse or redistribute it until its owner has reviewed and approved redaction; a complete report aligned with the current source code remains a follow-up task.
+
 ## Historical screenshots
 
 The root directory contains 23 image files named `IMG-20240801-WA0031.jpg` through `IMG-20240801-WA0053.jpg`. They document the earlier terminal implementation and example inputs/outputs, not screenshots of the maintained Tkinter interface. They are not loaded by the application. Review these historical images for sample-record privacy and consistency before reusing them in a public report or presentation.
