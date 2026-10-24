@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # CI's Windows 3.12 job has a desktop session. End the event loop automatically
 # so a broken launch cannot hang the test runner indefinitely.
 GUI_SMOKE_SCRIPT = r"""
+import os
 import runpy
 import tkinter as tk
 from tkinter import messagebox
@@ -29,13 +30,14 @@ def smoke_mainloop(self, n=0):
 
 tk.Misc.mainloop = smoke_mainloop
 messagebox.showwarning = lambda *args, **kwargs: None
-runpy.run_path("Student.py", run_name="__main__")
+runpy.run_path(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"], run_name="__main__")
 """
 
 
 # Exercise the recovery path without exposing sample values in logs. The synthetic
 # fixture contains a blank legacy identifier; the test repairs it through the UI.
 GUI_REPAIR_SCRIPT = r"""
+import os
 import runpy
 import sys
 import tkinter as tk
@@ -65,7 +67,7 @@ tk.Misc.mainloop = smoke_mainloop
 messagebox.showwarning = lambda *args, **kwargs: print("LEGACY_REVIEW_WARNING_SHOWN")
 messagebox.showinfo = lambda *args, **kwargs: None
 messagebox.showerror = lambda *args, **kwargs: print("GUI_ERROR")
-runpy.run_path("Student.py", run_name="__main__")
+runpy.run_path(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"], run_name="__main__")
 """
 
 
@@ -84,6 +86,7 @@ class TkinterStartupSmokeTests(unittest.TestCase):
 
             environment = os.environ.copy()
             environment["STUDENT_MANAGEMENT_DATA_DIR"] = temp_dir
+            environment["STUDENT_MANAGEMENT_APP_SCRIPT"] = str(REPO_ROOT / "Student.py")
             result = subprocess.run(
                 [sys.executable, "-c", GUI_SMOKE_SCRIPT],
                 cwd=REPO_ROOT,
@@ -137,6 +140,7 @@ class TkinterStartupSmokeTests(unittest.TestCase):
 
             environment = os.environ.copy()
             environment["STUDENT_MANAGEMENT_DATA_DIR"] = str(data_dir)
+            environment["STUDENT_MANAGEMENT_APP_SCRIPT"] = str(REPO_ROOT / "Student.py")
             repair_run = subprocess.run(
                 [sys.executable, "-c", GUI_REPAIR_SCRIPT],
                 cwd=working_dir,
