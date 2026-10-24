@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
 
-from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks
+from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks, validate_student_identity
 from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Create a SQLite database connection
@@ -27,15 +27,8 @@ conn.commit()
 
 
 def add_student():
-    roll_number = entry_roll.get().strip()
-    name = entry_name.get().strip()
-    if not roll_number:
-        messagebox.showerror('Invalid Input', 'Roll number is required.')
-        return
-    if not name:
-        messagebox.showerror('Invalid Input', 'Student name is required.')
-        return
     try:
+        roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
         marks = parse_marks(entry.get() for entry in entry_marks)
     except ValueError as exc:
         messagebox.showerror('Invalid Input', str(exc))
@@ -84,9 +77,10 @@ def search_student():
 
 
 def update_student():
-    roll_number = entry_roll.get().strip()
-    if not roll_number:
-        messagebox.showerror('Invalid Input', 'Enter the roll number of the student to update.')
+    try:
+        roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
+    except ValueError as exc:
+        messagebox.showerror('Invalid Input', str(exc))
         return
 
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
@@ -96,10 +90,6 @@ def update_student():
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
         return
 
-    name = entry_name.get().strip()
-    if not name:
-        messagebox.showerror('Invalid Input', 'Student name is required.')
-        return
     try:
         marks = parse_marks(entry.get() for entry in entry_marks)
     except ValueError as exc:
