@@ -8,7 +8,8 @@ A small Python student-record application with a Tkinter desktop interface and S
 - **`student_data_io.py`** — shared CSV import/export logic, including compatibility with legacy unquoted names and average recomputation.
 - **`Student Management System.py`** — older terminal-menu version that keeps its data in memory until saved.
 - **`Student Management System Final.py`** — earlier minimal Tkinter variant.
-- **`Student_Management_System [ Final Edited ].docx`** — project report/documentation artifact.
+- **`docs/PROJECT_REPORT.md`** — current code-aligned technical report.
+- **`Student_Management_System [ Final Edited ].docx`** — historical report artifact; incomplete and contains identifying information. Do not reuse until its owner approves redaction.
 - **`students_database.db`** — a database file currently tracked in this repository. Treat its contents as potentially sensitive; do not use this repository to distribute real student records.
 
 The variants are preserved for reference. The maintained starting point for development is `Student.py`.
@@ -59,7 +60,7 @@ This is a local desktop project, not a multi-user web service. It does not curre
 
 ## Project report status
 
-The root-level Word report is a legacy artifact, not complete project documentation. Its extracted text contains front matter and a table of contents but no substantive chapter content matching the listed sections. It also contains identifying student/school details and inconsistent academic-year labels. Do not reuse or redistribute it until its owner has reviewed and approved redaction; a complete report aligned with the current source code remains a follow-up task.
+The root-level Word report is a legacy artifact, not complete project documentation. Its extracted text contains front matter and a table of contents but no substantive chapter content matching the listed sections. It also contains identifying student/school details and inconsistent academic-year labels. Do not reuse or redistribute it until its owner has reviewed and approved redaction. The new technical report in docs/PROJECT_REPORT.md describes the current code without repeating those personal details. The original Word file remains untouched pending an owner-approved decision.
 
 ## Historical screenshots
 
