@@ -64,7 +64,7 @@ jobs:
                   ).fetchall()
                   summary.append(f"Student row count: {len(rows)}")
                   placeholder = re.compile(
-                      r"^(student(?:\\s*\\d+)?|test(?:\\s+student)?|demo(?:\\s+student)?|sample(?:\\s+student)?)$",
+                      r"^(student(?:\s*\d+)?|test(?:\s+student)?|demo(?:\s+student)?|sample(?:\s+student)?)$",
                       re.IGNORECASE,
                   )
                   placeholder_count = sum(
@@ -103,7 +103,7 @@ jobs:
           summary.append(f"Historical JPEG images found: {len(images)}")
           summary.append(f"Historical JPEG total bytes: {sum(path.stat().st_size for path in images)}")
           summary.append("Image filenames are not interpreted as evidence of privacy safety.")
-          Path("privacy-audit-summary.txt").write_text("\\n".join(summary) + "\\n", encoding="utf-8")
+          Path("privacy-audit-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
           with ZipFile("repository-images-audit.zip", "w", ZIP_DEFLATED) as archive:
               for path in images:
                   archive.write(path, arcname=path.name)
