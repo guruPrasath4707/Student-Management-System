@@ -42,13 +42,13 @@ Each task is intended to be completed and validated before progressing. Keep cha
 | --- | --- | --- | --- | --- |
 | A0 | P0 | Establish a written audit inventory and prioritized plan | Inventory, confirmed defects, acceptance criteria and scope are recorded | Done |
 | A1 | P1 | Repair terminal save/load round-tripping | CSV round-trips all five marks, names with commas, and average recomputation; malformed imports fail without partial mutation; automated regression tests pass | Done |
-| A2 | P1 | Complete core validation across all entry points | Both CLI and GUI reject invalid/missing marks and identifiers without crashing; shared grading logic is used consistently | In progress |
+| A2 | P1 | Complete core validation across all entry points | Both CLI and GUI reject invalid/missing marks and identifiers without crashing; shared grading logic is used consistently | Done (36-test suite passes on Python 3.10, 3.12 and 3.13) |
 | A3 | P1 | Make persistence safe and testable | Explicit application-data path, safe one-time migration behavior, clear error paths, and tests using temporary databases; no silent data loss | Done |
 | A4 | P1 | Resolve tracked database/privacy exposure | Decide whether the tracked database is genuine demo data; remove/sanitize it from the delivered tree only with a data-preserving migration plan; document that history needs separate cleanup | Deferred until migrated records are verified |
 | A5 | P2 | Improve desktop CRUD workflow | Scrollable table, responsive button layout, selecting a row populates fields, clear success/error feedback, and delete confirmation | Done (CI passed; GUI still needs a human visual smoke test) |
-| A6 | P2 | Enforce persistence integrity | Schema constraints or migration, consistent average recomputation, transaction tests, and regression handling for duplicate roll numbers | In progress |
-| A7 | P2 | Strengthen automated tests and CI | Regression tests for CSV compatibility, SQLite transactions, schema initialization, and pure domain logic; tests run on supported Python versions | Planned |
-| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | Planned |
+| A6 | P2 | Enforce persistence integrity | Schema constraints or migration, consistent average recomputation, transaction tests, and regression handling for duplicate roll numbers | Done (schema migration, constraints, average recomputation and transaction rollback tested) |
+| A7 | P2 | Strengthen automated tests and CI | Regression tests for CSV compatibility, SQLite transactions, schema initialization, and pure domain logic; tests run on supported Python versions | Done (36 tests pass on Python 3.10, 3.12 and 3.13) |
+| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | In progress (source and 23 screenshots reviewed; DOCX body still needs text extraction) |
 | A9 | P3 | Documentation and release hygiene | Setup instructions verified on Windows/Linux, known limitations stated accurately, no generated data or private records committed | Planned |
 
 ## Working rules
