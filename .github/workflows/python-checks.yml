@@ -46,7 +46,7 @@ jobs:
               value = "".join(node.text or "" for node in paragraph.findall(".//w:t", namespace))
               if value.strip():
                   paragraphs.append(value)
-          extracted = "\\n".join(paragraphs) + "\\n"
+          extracted = "\n".join(paragraphs) + "\n"
           Path("report-text-audit.txt").write_text(extracted, encoding="utf-8")
           print(f"Extracted {len(paragraphs)} paragraphs; SHA-256 {hashlib.sha256(source.read_bytes()).hexdigest()}")
           PY
