@@ -3,7 +3,6 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
 import math
-import math
 
 from student_core import (
     calculate_average as calculate_marks_average,
