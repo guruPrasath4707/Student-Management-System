@@ -307,82 +307,134 @@ def generate_report_cards():
         messagebox.showinfo('Report Cards', report_text)
 
 
-# Create the main window
+# Build the desktop interface.
 root = tk.Tk()
 root.title('Student Management System')
+root.geometry('1180x760')
+root.minsize(880, 600)
+root.columnconfigure(0, weight=1)
+root.rowconfigure(3, weight=1)
 
-# Set custom font (replace 'YourFont.ttf' with the actual font file name)
 custom_font = tkfont.nametofont('TkDefaultFont').copy()
 custom_font.configure(size=10)
-style = ttk.Style()
-style.configure('TButton', padding=5, relief='flat', background='#3498db', foreground='white', font=custom_font)
-style.map('TButton', background=[('active', '#2980b9')])
+style = ttk.Style(root)
+style.configure('TButton', padding=(8, 6), font=custom_font)
+style.configure('Treeview', rowheight=25, font=custom_font)
+style.configure('Treeview.Heading', font=(custom_font.actual('family'), 10, 'bold'))
 
-# Create and set variables
-result_text = tk.StringVar()
+# Student input form
+entry_frame = ttk.LabelFrame(root, text='Student details', padding=12)
+entry_frame.grid(row=0, column=0, sticky='ew', padx=12, pady=(12, 6))
+for column in range(5):
+    entry_frame.columnconfigure(column, weight=1)
 
-# Create a frame for entry widgets
-entry_frame = ttk.Frame(root, padding=(10, 10, 10, 0))
-entry_frame.grid(row=0, column=0, columnspan=2)
-
-# Create labels, entry widgets, and buttons
 label_roll = ttk.Label(entry_frame, text='Roll Number:', font=custom_font)
 label_name = ttk.Label(entry_frame, text='Name:', font=custom_font)
-label_marks = [ttk.Label(entry_frame, text=f'Marks Subject {i + 1}:', font=custom_font) for i in range(5)]
-
+label_marks = [
+    ttk.Label(entry_frame, text=f'Subject {i + 1} mark:', font=custom_font)
+    for i in range(5)
+]
 entry_roll = ttk.Entry(entry_frame, font=custom_font)
 entry_name = ttk.Entry(entry_frame, font=custom_font)
 entry_marks = [ttk.Entry(entry_frame, font=custom_font) for _ in range(5)]
 
-button_add = ttk.Button(root, text='Add Student', command=add_student)
-button_display = ttk.Button(root, text='Display Students', command=display_students)
-button_search = ttk.Button(root, text='Search Student', command=search_student)
-button_update = ttk.Button(root, text='Update Student', command=update_student)
-button_avg_marks = ttk.Button(root, text='Calculate Average Marks', command=calculate_average)
-button_grades = ttk.Button(root, text='Calculate Grades', command=calculate_grades)
-button_sort = ttk.Button(root, text='Sort Students', command=sort_students)
-button_save = ttk.Button(root, text='Save to File', command=save_to_file)
-button_load = ttk.Button(root, text='Load from File', command=load_from_file)
-button_details = ttk.Button(root, text='View Student Details', command=view_student_details)
-button_remove = ttk.Button(root, text='Remove Student', command=remove_student)
-button_report_cards = ttk.Button(root, text='Generate Report Cards', command=generate_report_cards)
-
-# Set the layout using grid
-label_roll.grid(row=0, column=0, padx=5, pady=5)
-entry_roll.grid(row=0, column=1, padx=5, pady=5)
-label_name.grid(row=1, column=0, padx=5, pady=5)
-entry_name.grid(row=1, column=1, padx=5, pady=5)
-
+label_roll.grid(row=0, column=0, sticky='w', padx=5, pady=4)
+entry_roll.grid(row=0, column=1, columnspan=4, sticky='ew', padx=5, pady=4)
+label_name.grid(row=1, column=0, sticky='w', padx=5, pady=4)
+entry_name.grid(row=1, column=1, columnspan=4, sticky='ew', padx=5, pady=4)
 for i in range(5):
-    label_marks[i].grid(row=2, column=i, padx=5, pady=5)
-    entry_marks[i].grid(row=3, column=i, padx=5, pady=5)
+    label_marks[i].grid(row=2, column=i, sticky='w', padx=5, pady=(8, 2))
+    entry_marks[i].grid(row=3, column=i, sticky='ew', padx=5, pady=2)
 
-# Create a frame for action buttons
-button_frame = ttk.Frame(root, padding=(10, 10, 10, 10))
-button_frame.grid(row=1, column=0, columnspan=2)
+# Responsive action grid: buttons now belong to their actual parent frame.
+button_frame = ttk.Frame(root, padding=(12, 4, 12, 8))
+button_frame.grid(row=1, column=0, sticky='ew')
+for column in range(4):
+    button_frame.columnconfigure(column, weight=1)
 
-button_add.grid(row=0, column=0, padx=5, pady=5)
-button_display.grid(row=0, column=1, padx=5, pady=5)
-button_search.grid(row=0, column=2, padx=5, pady=5)
-button_update.grid(row=0, column=3, padx=5, pady=5)
-button_avg_marks.grid(row=0, column=4, padx=5, pady=5)
-button_grades.grid(row=0, column=5, padx=5, pady=5)
-button_sort.grid(row=0, column=6, padx=5, pady=5)
-button_save.grid(row=0, column=7, padx=5, pady=5)
-button_load.grid(row=0, column=8, padx=5, pady=5)
-button_details.grid(row=0, column=9, padx=5, pady=5)
-button_remove.grid(row=0, column=10, padx=5, pady=5)
-button_report_cards.grid(row=0, column=11, padx=5, pady=5)
+button_add = ttk.Button(button_frame, text='Add Student', command=add_student)
+button_display = ttk.Button(button_frame, text='Refresh List', command=display_students)
+button_search = ttk.Button(button_frame, text='Search Student', command=search_student)
+button_update = ttk.Button(button_frame, text='Update Student', command=update_student)
+button_avg_marks = ttk.Button(button_frame, text='Student Averages', command=calculate_average)
+button_grades = ttk.Button(button_frame, text='Calculate Grades', command=calculate_grades)
+button_sort = ttk.Button(button_frame, text='Sort by Average', command=sort_students)
+button_save = ttk.Button(button_frame, text='Export CSV', command=save_to_file)
+button_load = ttk.Button(button_frame, text='Import CSV', command=load_from_file)
+button_details = ttk.Button(button_frame, text='View Details', command=view_student_details)
+button_remove = ttk.Button(button_frame, text='Remove Student', command=remove_student)
+button_report_cards = ttk.Button(button_frame, text='Report Cards', command=generate_report_cards)
 
-# Create a text widget for displaying results
-result_label = ttk.Label(root, text='Student Information:', font=custom_font)
-result_label.grid(row=2, column=0, columnspan=2, pady=(10, 0))
+buttons = [
+    (button_add, 0, 0), (button_display, 0, 1),
+    (button_search, 0, 2), (button_update, 0, 3),
+    (button_avg_marks, 1, 0), (button_grades, 1, 1),
+    (button_sort, 1, 2), (button_save, 1, 3),
+    (button_load, 2, 0), (button_details, 2, 1),
+    (button_remove, 2, 2), (button_report_cards, 2, 3),
+]
+for button, row, column in buttons:
+    button.grid(row=row, column=column, sticky='ew', padx=4, pady=4)
 
-result_display = ttk.Label(root, textvariable=result_text, justify='left', font=custom_font)
-result_display.grid(row=3, column=0, columnspan=2, pady=(0, 10))
+result_label = ttk.Label(
+    root,
+    text='Student records. Select a row to load it into the form.',
+    font=custom_font,
+)
+result_label.grid(row=2, column=0, sticky='w', padx=14, pady=(2, 5))
 
-# Start the main loop
+# Scrollable table of records, including all five subject marks.
+tree_frame = ttk.Frame(root, padding=(12, 0, 12, 12))
+tree_frame.grid(row=3, column=0, sticky='nsew')
+tree_frame.columnconfigure(0, weight=1)
+tree_frame.rowconfigure(0, weight=1)
+
+columns = (
+    'roll_number', 'name', 'subject1', 'subject2', 'subject3',
+    'subject4', 'subject5', 'average',
+)
+student_tree = ttk.Treeview(
+    tree_frame, columns=columns, show='headings', selectmode='browse'
+)
+column_specs = [
+    ('roll_number', 'Roll number', 120),
+    ('name', 'Student name', 210),
+    ('subject1', 'Subject 1', 105),
+    ('subject2', 'Subject 2', 105),
+    ('subject3', 'Subject 3', 105),
+    ('subject4', 'Subject 4', 105),
+    ('subject5', 'Subject 5', 105),
+    ('average', 'Average', 110),
+]
+for column, heading, width in column_specs:
+    student_tree.heading(column, text=heading)
+    student_tree.column(
+        column, width=width, minwidth=85,
+        stretch=(column in ('roll_number', 'name', 'average')),
+        anchor='w' if column in ('roll_number', 'name') else 'center',
+    )
+
+vertical_scrollbar = ttk.Scrollbar(
+    tree_frame, orient='vertical', command=student_tree.yview
+)
+horizontal_scrollbar = ttk.Scrollbar(
+    tree_frame, orient='horizontal', command=student_tree.xview
+)
+student_tree.configure(
+    yscrollcommand=vertical_scrollbar.set,
+    xscrollcommand=horizontal_scrollbar.set,
+)
+student_tree.grid(row=0, column=0, sticky='nsew')
+vertical_scrollbar.grid(row=0, column=1, sticky='ns')
+horizontal_scrollbar.grid(row=1, column=0, sticky='ew')
+student_tree.bind('<<TreeviewSelect>>', load_selected_student)
+
+def close_application():
+    try:
+        conn.close()
+    finally:
+        root.destroy()
+
+root.protocol('WM_DELETE_WINDOW', close_application)
+display_students()
 root.mainloop()
-
-# Close the database connection when the program exits
-conn.close()
