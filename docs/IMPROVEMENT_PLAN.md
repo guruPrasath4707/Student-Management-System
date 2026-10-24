@@ -1,60 +1,68 @@
 # Repository Audit and Improvement Plan
 
-Last audited: 2026-10-25
-Audit branch: `work/student-management-hardening-2026-10-25`
-Default branch: `main` (PR #1's initial hardening tranche merged at `0ac1ede`; the subsequent audit and improvements are in PR #2)
+Last audited: 2026-10-25  
+Default branch: `main`  
+Working branch: `work/student-management-hardening-2026-10-25`  
+Current review: [PR #2](https://github.com/guruPrasath4707/Student-Management-System/pull/2)
 
 ## Repository inventory
 
-- `Student.py`: current Tkinter + SQLite entry point; CRUD, grade/report actions, and file import/export.
-- `Student Management System.py`: separate terminal implementation using an in-memory dictionary and a text export.
-- `Student Management System Final.py`: older minimal Tkinter implementation sharing the SQLite filename/schema.
-- `student_core.py`: UI-independent mark validation, average calculation, and grade rules.
-- `tests/test_student_core.py`: unit coverage for the shared mark rules.
-- `.github/workflows/python-checks.yml`: Python syntax compilation and unit tests.
-- `README.md`, `.gitignore`: setup, scope, and local-file ignore rules.
-- `Student_Management_System [ Final Edited ].docx`: project report artifact.
-- `students_database.db`: tracked SQLite database with the `students` table; its contents must be treated as potentially sensitive.
-- `IMG-20240801-WA0031.jpg` through `IMG-20240801-WA0053.jpg`: 23 screenshots documenting the old terminal application, sample records, and report output. They are not referenced by the current README.
+The working branch contains the maintained desktop program, two historical application variants, shared domain/data/storage modules, four test files, a GitHub Actions workflow, source documentation, the historic Word report, a tracked SQLite database, and 23 historic JPEG screenshots. The working tree was checked through the GitHub tree and individual file contents; the binary document and assets were audited through an isolated CI extraction/audit run.
 
-## Findings
+| Path | Purpose and current disposition |
+| --- | --- |
+| `Student.py` | Maintained Tkinter + SQLite desktop app; record CRUD, grades/reports, CSV exchange, scrollable table |
+| `Student Management System.py` | Legacy terminal menu using an in-memory dictionary and CSV file; its active data is separate from desktop SQLite |
+| `Student Management System Final.py` | Minimal historical Tkinter variant, retained for reference |
+| `student_core.py` | Shared identity/marks validation, averages, grade rules |
+| `student_data_io.py` | CSV parsing/serialization and supported legacy row compatibility |
+| `student_storage.py` | Per-user database location, safe migration, schema validation/upgrade, constraints and atomic batch insert |
+| `tests/test_student_core.py` | Domain and identity validation tests |
+| `tests/test_student_data_io.py` | CSV round-trip, legacy compatibility and malformed-input tests |
+| `tests/test_student_storage.py` | Data paths, migration, schema constraints and transaction tests |
+| `tests/test_cli_validation.py` | Black-box terminal input and import-conflict regression tests |
+| `.github/workflows/python-checks.yml` | Compile and unit-test workflow; now configured for Python 3.10/3.12/3.13 on Ubuntu and Windows |
+| `README.md` | Setup, limits, data location and privacy warnings |
+| `docs/PROJECT_REPORT.md` | Code-aligned technical report for the actual maintained implementation |
+| `Student_Management_System [ Final Edited ].docx` | Historic incomplete report artifact; contains identifying details; preserved pending approval |
+| `students_database.db` | Tracked legacy database; contents need owner-approved backup/migration and privacy decision |
+| `IMG-20240801-WA0031.jpg`–`IMG-20240801-WA0053.jpg` | 23 historic CLI screenshots; contain student-style identifiers, names and marks, so treat as potentially sensitive |
 
-### Confirmed from source
+## Baseline defects found and resulting status
 
-1. The terminal version's save format writes roll number, name, five marks and average as comma-separated fields, but its loader only reads the first mark as the marks list and takes the second mark as the average. Save/load therefore does not round-trip correctly.
-2. The terminal version accepts unchecked marks and blank fields; repeated roll numbers overwrite existing in-memory records without warning.
-3. Both older variants duplicate business rules, so validation and grade logic can drift.
-4. The current Tkinter view concatenates every student into one label rather than showing a scrollable table. The twelve actions are packed onto one horizontal row, making the layout fragile on normal screen widths.
-5. Search and detail actions only show message boxes; they do not load the selected record into the editable fields. Updates require manually re-entering every field.
-6. The UI and database connection are created at module import time, which blocks straightforward headless tests of persistence and UI actions.
-7. The SQLite table has no database-level `NOT NULL` or score-range constraints; application validation alone cannot protect against legacy or external writes.
-8. The desktop app uses a relative database path. Running it from a different working directory can silently create/use a different database.
-9. `.gitignore` now ignores the database filename, but that does not untrack the database already committed. Repository history is not scrubbed by this rule.
-10. The current CI validates syntax and shared-core tests only; it does not exercise database transactions, CSV compatibility, or GUI interaction.
-11. The screenshot set is mostly code/output evidence for the terminal version and is not linked from project documentation. Sample outputs should be reviewed for consistency with current behavior.
-12. The DOCX report was inspected through an isolated extraction run: the textual content contains cover/front-matter, an unfilled certificate template, acknowledgement, and a table of contents, but no substantive chapter text corresponding to the listed sections. It contains a student's identifying details and school information, and its cover/certificate academic years are inconsistent. The only embedded image is a school/religious logo. Do not repeat those identifying details; the report needs owner-approved redaction and a complete, code-accurate rewrite before reuse or redistribution.
+The initial source audit found incorrect legacy CLI CSV field parsing, unvalidated marks and identities, duplicate business rules, a cramped label-based desktop record view, a fragile custom-font initialization, relative-path database creation, no database-level mark/average constraints, weak data-import tests, and misleading/incomplete legacy project documentation.
+
+The active branch now corrects the CLI CSV round-trip; shares validation and grade rules; protects in-memory records from import collisions; validates all imported rows before mutation; uses a per-user SQLite path; migrates legacy data without deleting its source; uses schema constraints; commits batch imports atomically; provides a scrollable desktop table and delete confirmation; and contains a technical report that describes the implemented system rather than copying unverified claims into the historic Word document.
+
+## Privacy audit: findings that remain unresolved
+
+The committed database passed SQLite's integrity check and contains two student rows. Neither name matched the simple generic-placeholder patterns used for the audit; no blank identities were detected. One row has an out-of-range subject mark, and one row has a stale or invalid average. Placeholder-name matching is only a heuristic and cannot establish that the records are synthetic. The 23 screenshots also show student-style record data, and the historic DOCX contains identifying student/school details.
+
+No record values are copied into this plan or printed to CI logs. The old DB, screenshots and DOCX have **not** been deleted, replaced or rewritten. Before any such change, back up the source artifacts, verify the migrated records, establish which material may be published, and obtain owner approval for redaction/removal. Deleting a file from the current tree does not erase older copies from Git history; history cleanup is a separate coordinated operation.
 
 ## Ordered work plan
 
-Each task is intended to be completed and validated before progressing. Keep changes on a feature branch and leave `main` untouched until reviewed.
+Do not start a new task until the prior task's relevant tests/acceptance checks pass. Keep edits on the working branch; leave `main` unchanged until the pull request is reviewed.
 
 | ID | Priority | Task | Completion criteria | Status |
 | --- | --- | --- | --- | --- |
-| A0 | P0 | Establish a written audit inventory and prioritized plan | Inventory, confirmed defects, acceptance criteria and scope are recorded | Done |
-| A1 | P1 | Repair terminal save/load round-tripping | CSV round-trips all five marks, names with commas, and average recomputation; malformed imports fail without partial mutation; automated regression tests pass | Done |
-| A2 | P1 | Complete core validation across all entry points | Both CLI and GUI reject invalid/missing marks and identifiers without crashing; shared grading logic is used consistently | Done (36-test suite passes on Python 3.10, 3.12 and 3.13) |
-| A3 | P1 | Make persistence safe and testable | Explicit application-data path, safe one-time migration behavior, clear error paths, and tests using temporary databases; no silent data loss | Done |
-| A4 | P1 | Resolve tracked database/privacy exposure | Decide whether the tracked database is genuine demo data; remove/sanitize it from the delivered tree only with a data-preserving migration plan; document that history needs separate cleanup | Deferred until migrated records are verified |
-| A5 | P2 | Improve desktop CRUD workflow | Scrollable table, responsive button layout, selecting a row populates fields, clear success/error feedback, and delete confirmation | Done (CI passed; GUI still needs a human visual smoke test) |
-| A6 | P2 | Enforce persistence integrity | Schema constraints or migration, consistent average recomputation, transaction tests, and regression handling for duplicate roll numbers | Done (schema migration, constraints, average recomputation and transaction rollback tested) |
-| A7 | P2 | Strengthen automated tests and CI | Regression tests for CSV compatibility, SQLite transactions, schema initialization, and pure domain logic; tests run on supported Python versions | Done (36 tests pass on Python 3.10, 3.12 and 3.13) |
-| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | Done (code-aligned technical report added; original DOCX flagged for owner-approved redaction) |
-| A9 | P3 | Documentation and release hygiene | Setup instructions verified on Windows/Linux, known limitations stated accurately, no generated data or private records committed | In progress (setup/limitations documented; tracked DB and identifying legacy DOCX remain owner-gated) |
+| A0 | P0 | Establish full inventory and ordered plan | Repository files inventoried; initial defects and acceptance criteria recorded | Done |
+| A1 | P1 | Repair legacy CLI CSV save/load | Correct five-mark round-trip, comma-containing names, average recomputation, malformed-file rejection and no partial in-memory mutation | Done |
+| A2 | P1 | Apply shared validation across active entry points | Missing identifiers/names and invalid marks fail safely; average/grade rules are shared | Done; domain and CLI regression tests pass on the latest completed Linux CI matrix |
+| A3 | P1 | Make desktop persistence safe and testable | Per-user path, source-preserving migration, database constraints, schema-version validation and isolated storage tests | Done |
+| A4 | P1 | Resolve tracked DB and historic-data privacy exposure | Preserve a verified backup; confirm data ownership/meaning; obtain approval; sanitize/remove only with migration plan; decide separately on history cleanup | Deferred: source contains two non-generic-looking records and invalid historical data; no destructive change made |
+| A5 | P2 | Improve desktop CRUD flow | Scrollable table, row-to-form selection, responsive actions and deletion confirmation | Implemented; manual Windows GUI smoke test remains |
+| A6 | P2 | Enforce database integrity | Constraints on identity/marks/derived average; schema upgrade and whole-batch rollback verified by tests | Done |
+| A7 | P2 | Regression testing and CI | Domain, CSV, storage/migration and CLI tests; matrix on supported Python versions | Existing Linux matrix passed; new Windows/Linux six-job matrix is awaiting current commit validation |
+| A8 | P3 | Replace inaccurate/incomplete technical documentation | Accurate architecture, schema, grading, persistence, CSV and security limits documented; historic DOCX preserved and flagged | Done for new Markdown report; historic DOCX must not be redistributed without approved redaction |
+| A9 | P3 | Release hygiene and portability | CI on Windows/Linux, precise setup docs, no new data artifacts in commits, clean CI results, GUI smoke test documented | In progress; portable CI configured, visual test and owner-gated privacy work remain |
+| A10 | P3 | Improve workflow features without overclaiming | Add configurable subjects/terms, dedicated report export and better record filtering only after usability requirements are defined and tests are planned | Planned |
 
 ## Working rules
 
-- Do not rewrite or delete user records without a backup/migration path.
-- Do not claim the project is production-ready; it currently lacks authentication, authorization, and audit logging.
-- Do not weaken tests to make a change pass.
-- Keep each task in a focused commit and run the relevant checks before starting the next task.
-- A successful syntax/unit workflow does not substitute for GUI/manual testing.
+- Never overwrite or delete student data as a shortcut; make and verify backups before migration or redaction.
+- Do not copy names, roll numbers, or marks from historic assets into docs, test fixtures, commit messages or CI logs.
+- Do not describe this local single-user app as production-ready; it lacks authentication, authorization, audit history and multi-user controls.
+- Do not weaken tests to make code pass.
+- A green syntax/unit workflow is not a substitute for visually testing Tkinter on a real desktop.
+- Update this plan after each completed task and use the latest branch head when making edits.
