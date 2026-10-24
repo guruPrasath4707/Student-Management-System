@@ -2,7 +2,7 @@
 
 import unittest
 
-from student_core import calculate_average, grade_for_average, parse_marks
+from student_core import calculate_average, grade_for_average, parse_marks, validate_student_identity
 
 
 class ParseMarksTests(unittest.TestCase):
@@ -49,6 +49,17 @@ class AverageAndGradeTests(unittest.TestCase):
             with self.subTest(average=average):
                 with self.assertRaises(ValueError):
                     grade_for_average(average)
+
+
+class StudentIdentityTests(unittest.TestCase):
+    def test_trims_required_identity_fields(self):
+        self.assertEqual(validate_student_identity("  S-10  ", "  Sam Student  "), ("S-10", "Sam Student"))
+
+    def test_rejects_blank_roll_number_or_name(self):
+        for roll, name in (("", "Name"), ("  ", "Name"), ("S-11", ""), ("S-11", "  ")):
+            with self.subTest(roll=roll, name=name):
+                with self.assertRaises(ValueError):
+                    validate_student_identity(roll, name)
 
 
 if __name__ == "__main__":
