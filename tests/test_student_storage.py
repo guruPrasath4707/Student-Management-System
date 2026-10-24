@@ -295,7 +295,7 @@ class DatabaseStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             connection = connect_database(Path(temp_dir) / "app.db")
             try:
-                with self.assertRaisesRegex(ValueError, "Record 2"):
+                with self.assertRaisesRegex(ValueError, "record 2"):
                     insert_student_records(
                         connection,
                         [
