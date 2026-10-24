@@ -60,3 +60,14 @@ def grade_for_average(average: float) -> str:
     if score >= 60:
         return "D"
     return "F"
+
+def validate_student_identity(roll_number: str, name: str) -> tuple[str, str]:
+    """Normalize and validate the two required student identity fields."""
+    normalized_roll = str(roll_number).strip()
+    normalized_name = str(name).strip()
+    if not normalized_roll:
+        raise ValueError("Roll number is required.")
+    if not normalized_name:
+        raise ValueError("Student name is required.")
+    return normalized_roll, normalized_name
+
