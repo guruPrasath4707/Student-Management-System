@@ -32,7 +32,7 @@ Default branch: `main` (PR #1's initial hardening tranche merged at `0ac1ede`; t
 9. `.gitignore` now ignores the database filename, but that does not untrack the database already committed. Repository history is not scrubbed by this rule.
 10. The current CI validates syntax and shared-core tests only; it does not exercise database transactions, CSV compatibility, or GUI interaction.
 11. The screenshot set is mostly code/output evidence for the terminal version and is not linked from project documentation. Sample outputs should be reviewed for consistency with current behavior.
-12. The Word report is present as a binary artifact. The GitHub content connector exposes text source files and base64 for binary files, but does not provide extracted DOCX text; its prose has therefore not been independently compared line-by-line with the implementation in this pass.
+12. The DOCX report was inspected through an isolated extraction run: the textual content contains cover/front-matter, an unfilled certificate template, acknowledgement, and a table of contents, but no substantive chapter text corresponding to the listed sections. It contains a student's identifying details and school information, and its cover/certificate academic years are inconsistent. The only embedded image is a school/religious logo. Do not repeat those identifying details; the report needs owner-approved redaction and a complete, code-accurate rewrite before reuse or redistribution.
 
 ## Ordered work plan
 
@@ -48,7 +48,7 @@ Each task is intended to be completed and validated before progressing. Keep cha
 | A5 | P2 | Improve desktop CRUD workflow | Scrollable table, responsive button layout, selecting a row populates fields, clear success/error feedback, and delete confirmation | Done (CI passed; GUI still needs a human visual smoke test) |
 | A6 | P2 | Enforce persistence integrity | Schema constraints or migration, consistent average recomputation, transaction tests, and regression handling for duplicate roll numbers | Done (schema migration, constraints, average recomputation and transaction rollback tested) |
 | A7 | P2 | Strengthen automated tests and CI | Regression tests for CSV compatibility, SQLite transactions, schema initialization, and pure domain logic; tests run on supported Python versions | Done (36 tests pass on Python 3.10, 3.12 and 3.13) |
-| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | In progress (source and 23 screenshots reviewed; DOCX body still needs text extraction) |
+| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | In progress (23 screenshots reviewed; DOCX is incomplete and contains identifying details; redact/rewrite after owner review) |
 | A9 | P3 | Documentation and release hygiene | Setup instructions verified on Windows/Linux, known limitations stated accurately, no generated data or private records committed | Planned |
 
 ## Working rules
