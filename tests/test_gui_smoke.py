@@ -134,6 +134,37 @@ class TkinterStartupSmokeTests(unittest.TestCase):
                 self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM students").fetchone()[0], 0)
 
+
+    def test_legacy_tkinter_entry_point_uses_isolated_user_data(self):
+        with tempfile.TemporaryDirectory(prefix="student-management-legacy-gui-") as temp_dir:
+            database_path = Path(temp_dir) / DATABASE_FILENAME
+            connection = connect_database(database_path)
+            connection.close()
+
+            environment = os.environ.copy()
+            environment["STUDENT_MANAGEMENT_DATA_DIR"] = temp_dir
+            environment["STUDENT_MANAGEMENT_APP_SCRIPT"] = str(
+                REPO_ROOT / "Student Management System Final.py"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", GUI_SMOKE_SCRIPT],
+                cwd=REPO_ROOT,
+                env=environment,
+                text=True,
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+            self.assertEqual(
+                result.returncode,
+                0,
+                msg=f"stdout:\\n{result.stdout}\\nstderr:\\n{result.stderr}",
+            )
+            with closing(sqlite3.connect(database_path)) as database:
+                self.assertEqual(database.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+                self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 1)
+                self.assertEqual(database.execute("SELECT COUNT(*) FROM students").fetchone()[0], 0)
+
     def test_blank_legacy_identifier_is_repaired_and_schema_upgrade_completes(self):
         with tempfile.TemporaryDirectory(prefix="student-management-repair-") as temp_dir:
             base = Path(temp_dir)
