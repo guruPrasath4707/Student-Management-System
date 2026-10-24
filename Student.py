@@ -7,7 +7,7 @@ from student_core import calculate_average as calculate_marks_average, grade_for
 from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Open the per-user database, migrating the old working-directory file once when present.
-from student_storage import StorageError, connect_database
+from student_storage import StorageError, connect_database, insert_student_records
 
 try:
     conn = connect_database()
@@ -227,12 +227,8 @@ def load_from_file():
             messagebox.showinfo('No Data', 'The import file contains no student records.')
             return
 
-        # Insert only after the entire file has been validated; roll back on conflict.
-        with conn:
-            cursor.executemany('''
-                INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', prepared_rows)
+        # This helper validates the rows and inserts the complete batch transactionally.
+        insert_student_records(conn, prepared_rows)
     except FileNotFoundError:
         messagebox.showinfo('File Not Found', 'No previous data found.')
         return
