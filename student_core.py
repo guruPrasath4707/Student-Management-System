@@ -61,10 +61,10 @@ def grade_for_average(average: float) -> str:
         return "D"
     return "F"
 
-def validate_student_identity(roll_number: str, name: str) -> tuple[str, str]:
+def validate_student_identity(roll_number: str | None, name: str | None) -> tuple[str, str]:
     """Normalize and validate the two required student identity fields."""
-    normalized_roll = str(roll_number).strip()
-    normalized_name = str(name).strip()
+    normalized_roll = "" if roll_number is None else str(roll_number).strip()
+    normalized_name = "" if name is None else str(name).strip()
     if not normalized_roll:
         raise ValueError("Roll number is required.")
     if not normalized_name:
