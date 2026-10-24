@@ -1,6 +1,10 @@
+import csv
 import tkinter as tk
 from tkinter import ttk, messagebox
+import tkinter.font as tkfont
 import sqlite3
+
+from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks
 
 # Create a SQLite database connection
 conn = sqlite3.connect('students_database.db')
@@ -23,11 +27,21 @@ conn.commit()
 
 
 def add_student():
-    roll_number = entry_roll.get()
-    name = entry_name.get()
-    marks = [float(entry_marks[i].get()) for i in range(5)]
+    roll_number = entry_roll.get().strip()
+    name = entry_name.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Roll number is required.')
+        return
+    if not name:
+        messagebox.showerror('Invalid Input', 'Student name is required.')
+        return
+    try:
+        marks = parse_marks(entry.get() for entry in entry_marks)
+    except ValueError as exc:
+        messagebox.showerror('Invalid Input', str(exc))
+        return
 
-    average_marks = sum(marks) / len(marks)
+    average_marks = calculate_marks_average(marks)
 
     try:
         cursor.execute('''
@@ -40,7 +54,6 @@ def add_student():
         display_students()
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
-
 
 def display_students():
     cursor.execute('SELECT * FROM students')
@@ -71,28 +84,38 @@ def search_student():
 
 
 def update_student():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter the roll number of the student to update.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
-    if student:
-        name = entry_name.get()
-        marks = [float(entry_marks[i].get()) for i in range(5)]
-
-        average_marks = sum(marks) / len(marks)
-
-        cursor.execute('''
-            UPDATE students
-            SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
-            WHERE roll_number=?
-        ''', (name, *marks, average_marks, roll_number))
-        conn.commit()
-        messagebox.showinfo('Success', 'Student information updated successfully!')
-        clear_entries()
-        display_students()
-    else:
+    if not student:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
+        return
 
+    name = entry_name.get().strip()
+    if not name:
+        messagebox.showerror('Invalid Input', 'Student name is required.')
+        return
+    try:
+        marks = parse_marks(entry.get() for entry in entry_marks)
+    except ValueError as exc:
+        messagebox.showerror('Invalid Input', str(exc))
+        return
+
+    average_marks = calculate_marks_average(marks)
+    cursor.execute('''
+        UPDATE students
+        SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
+        WHERE roll_number=?
+    ''', (name, *marks, average_marks, roll_number))
+    conn.commit()
+    messagebox.showinfo('Success', 'Student information updated successfully!')
+    clear_entries()
+    display_students()
 
 def calculate_average():
     cursor.execute('SELECT * FROM students')
@@ -117,10 +140,7 @@ def calculate_grades():
         grades_text = 'Grades of all students:'
         for student in students:
             average_marks = student[7]
-            grade = 'A' if average_marks >= 90 else \
-                    'B' if 80 <= average_marks < 90 else \
-                    'C' if 70 <= average_marks < 80 else \
-                    'D' if 60 <= average_marks < 70 else 'F'
+            grade = grade_for_average(average_marks)
             grades_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Grade: {grade}"
         messagebox.showinfo('Grades', grades_text)
 
@@ -139,32 +159,58 @@ def sort_students():
 
 
 def save_to_file():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to save.')
-    else:
-        with open('students_data.txt', 'w') as file:
-            for student in students:
-                file.write(f"{student[0]},{student[1]},{student[2]},{student[3]},{student[4]},{student[5]},{student[6]},{student[7]}\n")
-        messagebox.showinfo('Data Saved', 'Data saved successfully!')
+        return
+
+    try:
+        with open('students_data.txt', 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerows(students)
+    except OSError as exc:
+        messagebox.showerror('Save Failed', f"Could not save student data: {exc}")
+        return
+    messagebox.showinfo('Data Saved', 'Student data exported to students_data.txt.')
 
 
 def load_from_file():
     try:
-        with open('students_data.txt', 'r') as file:
-            for line in file:
-                data = line.strip().split(',')
-                cursor.execute('''
-                    INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (data[0], data[1], float(data[2]), float(data[3]), float(data[4]), float(data[5]), float(data[6]), float(data[7])))
-            conn.commit()
-        messagebox.showinfo('Data Loaded', 'Data loaded successfully!')
-        display_students()
+        with open('students_data.txt', 'r', newline='', encoding='utf-8') as file:
+            rows = list(csv.reader(file))
+
+        if not rows:
+            messagebox.showinfo('No Data', 'The import file is empty.')
+            return
+
+        prepared_rows = []
+        for line_number, data in enumerate(rows, start=1):
+            if len(data) != 8:
+                raise ValueError(f"Line {line_number} must contain a roll number, name, five marks, and an average.")
+            roll_number, name = data[0].strip(), data[1].strip()
+            if not roll_number or not name:
+                raise ValueError(f"Line {line_number} is missing a roll number or student name.")
+            marks = parse_marks(data[2:7])
+            average_marks = calculate_marks_average(marks)
+            prepared_rows.append((roll_number, name, *marks, average_marks))
+
+        # The context manager rolls the entire import back if any row conflicts.
+        with conn:
+            cursor.executemany('''
+                INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', prepared_rows)
     except FileNotFoundError:
         messagebox.showinfo('File Not Found', 'No previous data found.')
+        return
+    except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.IntegrityError) as exc:
+        messagebox.showerror('Import Failed', f"Student data was not imported: {exc}")
+        return
+
+    messagebox.showinfo('Data Loaded', f"Imported {len(prepared_rows)} student record(s).")
+    display_students()
 
 
 def view_student_details():
@@ -205,10 +251,7 @@ def generate_report_cards():
         for student in students:
             report_text += f"\n\nRoll Number: {student[0]}\nName: {student[1]}\nAverage Marks: {student[7]:.2f}\n"
             average_marks = student[7]
-            grade = 'A' if average_marks >= 90 else \
-                    'B' if 80 <= average_marks < 90 else \
-                    'C' if 70 <= average_marks < 80 else \
-                    'D' if 60 <= average_marks < 70 else 'F'
+            grade = grade_for_average(average_marks)
             report_text += f"Grade: {grade}\nSubject-wise Marks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\nTotal Marks: {sum(student[2:7])}\n"
         messagebox.showinfo('Report Cards', report_text)
 
@@ -218,7 +261,8 @@ root = tk.Tk()
 root.title('Student Management System')
 
 # Set custom font (replace 'YourFont.ttf' with the actual font file name)
-custom_font = tk.font.Font(family='YourFont', size=10)
+custom_font = tkfont.nametofont('TkDefaultFont').copy()
+custom_font.configure(size=10)
 style = ttk.Style()
 style.configure('TButton', padding=5, relief='flat', background='#3498db', foreground='white', font=custom_font)
 style.map('TButton', background=[('active', '#2980b9')])
