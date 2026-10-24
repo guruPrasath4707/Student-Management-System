@@ -9,20 +9,11 @@ import tempfile
 from pathlib import Path
 from collections.abc import Mapping
 
+from student_core import calculate_average, parse_marks, validate_student_identity
+
 DATABASE_FILENAME = "students_database.db"
 APP_DIRECTORY_NAME = "StudentManagementSystem"
-STUDENTS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS students (
-    roll_number TEXT PRIMARY KEY,
-    name TEXT,
-    marks_subject1 REAL,
-    marks_subject2 REAL,
-    marks_subject3 REAL,
-    marks_subject4 REAL,
-    marks_subject5 REAL,
-    average_marks REAL
-)
-"""
+SCHEMA_VERSION = 1
 REQUIRED_COLUMNS = {
     "roll_number",
     "name",
@@ -34,6 +25,38 @@ REQUIRED_COLUMNS = {
     "average_marks",
 }
 
+
+def _students_schema(table_name: str = "students") -> str:
+    """Return the constrained schema for one of the internally named tables."""
+    return f"""
+    CREATE TABLE {table_name} (
+        roll_number TEXT PRIMARY KEY NOT NULL
+            CHECK(length(trim(roll_number)) > 0),
+        name TEXT NOT NULL
+            CHECK(length(trim(name)) > 0),
+        marks_subject1 REAL NOT NULL
+            CHECK(typeof(marks_subject1) IN ('integer', 'real') AND marks_subject1 BETWEEN 0 AND 100),
+        marks_subject2 REAL NOT NULL
+            CHECK(typeof(marks_subject2) IN ('integer', 'real') AND marks_subject2 BETWEEN 0 AND 100),
+        marks_subject3 REAL NOT NULL
+            CHECK(typeof(marks_subject3) IN ('integer', 'real') AND marks_subject3 BETWEEN 0 AND 100),
+        marks_subject4 REAL NOT NULL
+            CHECK(typeof(marks_subject4) IN ('integer', 'real') AND marks_subject4 BETWEEN 0 AND 100),
+        marks_subject5 REAL NOT NULL
+            CHECK(typeof(marks_subject5) IN ('integer', 'real') AND marks_subject5 BETWEEN 0 AND 100),
+        average_marks REAL NOT NULL
+            CHECK(
+                typeof(average_marks) IN ('integer', 'real')
+                AND average_marks BETWEEN 0 AND 100
+                AND ABS(average_marks -
+                    ((marks_subject1 + marks_subject2 + marks_subject3 +
+                      marks_subject4 + marks_subject5) / 5.0)) < 0.00001
+            )
+    )
+    """
+
+
+STUDENTS_SCHEMA = _students_schema("students")
 
 class StorageError(RuntimeError):
     """Raised when storage cannot be opened or safely migrated."""
@@ -79,12 +102,98 @@ def _validate_legacy_schema(connection: sqlite3.Connection, source: Path) -> Non
         row[1] for row in connection.execute("PRAGMA table_info(students)").fetchall()
     }
     missing = sorted(REQUIRED_COLUMNS - columns)
-    if missing:
+    extra = sorted(columns - REQUIRED_COLUMNS)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing columns: " + ", ".join(missing))
+        if extra:
+            details.append("unexpected columns: " + ", ".join(extra))
         raise StorageError(
-            f"Cannot migrate {source}: the students table is missing required columns: "
-            + ", ".join(missing)
+            f"Cannot safely migrate {source}: " + "; ".join(details) + "."
         )
 
+
+def _upgrade_schema(connection: sqlite3.Connection) -> None:
+    """Upgrade the original unconstrained table transactionally without dropping invalid data."""
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    table_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='students'"
+    ).fetchone() is not None
+
+    if not table_exists:
+        connection.execute(STUDENTS_SCHEMA)
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        connection.commit()
+        return
+    if version >= SCHEMA_VERSION:
+        return
+
+    temporary_table = "students__migration_v1"
+    unexpected_objects = connection.execute(
+        "SELECT type, name FROM sqlite_master "
+        "WHERE tbl_name='students' AND type IN ('trigger', 'index') "
+        "AND name NOT LIKE 'sqlite_autoindex%'"
+    ).fetchall()
+    if unexpected_objects:
+        raise StorageError(
+            "Cannot safely upgrade the student table because custom indexes or triggers "
+            "are attached. Back up the database and review those objects before migrating."
+        )
+
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        _validate_legacy_schema(connection, Path("the existing database"))
+        rows = connection.execute(
+            "SELECT roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
+            "marks_subject4, marks_subject5, average_marks FROM students"
+        ).fetchall()
+
+        normalized_rows = []
+        seen_roll_numbers: set[str] = set()
+        for row_number, row in enumerate(rows, start=1):
+            try:
+                roll_number, name = validate_student_identity(row[0], row[1])
+                if roll_number in seen_roll_numbers:
+                    raise ValueError("roll number duplicates another value after trimming")
+                marks = parse_marks(row[2:7])
+            except ValueError as exc:
+                raise StorageError(
+                    f"Cannot safely upgrade student record {row_number}: {exc} "
+                    "No legacy records were deleted; back up and correct the record first."
+                ) from exc
+            average = calculate_average(marks)
+            normalized_rows.append((roll_number, name, *marks, average))
+            seen_roll_numbers.add(roll_number)
+
+        existing_temporary = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (temporary_table,),
+        ).fetchone()
+        if existing_temporary:
+            raise StorageError(
+                f"Cannot safely upgrade the database because {temporary_table} already exists."
+            )
+
+        connection.execute(_students_schema(temporary_table))
+        connection.executemany(
+            f"INSERT INTO {temporary_table} VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            normalized_rows,
+        )
+        connection.execute("DROP TABLE students")
+        connection.execute(f"ALTER TABLE {temporary_table} RENAME TO students")
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        connection.commit()
+    except StorageError:
+        connection.rollback()
+        raise
+    except (ValueError, sqlite3.DatabaseError) as exc:
+        connection.rollback()
+        raise StorageError(
+            "The existing student database could not be upgraded safely. "
+            "The schema change was rolled back; back up and inspect the database before retrying. "
+            f"Details: {exc}"
+        ) from exc
 
 def _migrate_legacy_database(source_path: Path, target_path: Path) -> None:
     """Copy a legacy database via SQLite backup into a temp file, then atomically publish it."""
@@ -178,9 +287,12 @@ def connect_database(
 
     try:
         connection = sqlite3.connect(str(target))
-        connection.execute(STUDENTS_SCHEMA)
-        connection.commit()
+        _upgrade_schema(connection)
         return connection
+    except StorageError:
+        if "connection" in locals():
+            connection.close()
+        raise
     except (OSError, sqlite3.DatabaseError) as exc:
         if "connection" in locals():
             connection.close()
