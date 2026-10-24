@@ -9,6 +9,7 @@ A small Python student-record application with a Tkinter desktop interface and S
 - **`Student Management System.py`** — older terminal-menu version that keeps its data in memory until saved.
 - **`Student Management System Final.py`** — earlier minimal Tkinter variant.
 - **`docs/PROJECT_REPORT.md`** — current code-aligned technical report.
+- **`docs/IMPROVEMENT_PLAN.md`** — ordered audit roadmap, task acceptance criteria, and status.
 - **`Student_Management_System [ Final Edited ].docx`** — historical report artifact; incomplete and contains identifying information. Do not reuse until its owner approves redaction.
 - **`students_database.db`** — a database file currently tracked in this repository. Treat its contents as potentially sensitive; do not use this repository to distribute real student records.
 
