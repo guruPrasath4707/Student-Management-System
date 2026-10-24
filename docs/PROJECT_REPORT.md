@@ -142,7 +142,7 @@ The repository has automated tests for:
 - transactional bulk insert, validation-before-write and rollback on duplicate keys; and
 - black-box CLI validation in a temporary working directory.
 
-GitHub Actions compiles Python sources and runs the tests on Python 3.10, 3.12 and 3.13. The latest verified matrix run passed when this report was prepared: [view CI run](https://github.com/guruPrasath4707/Student-Management-System/actions/runs/40129866194).
+GitHub Actions compiles Python sources and runs the tests on Python 3.10, 3.12 and 3.13. The workflow is configured to exercise both Ubuntu and Windows runners; each six-job matrix must pass before a release is considered validated. See the [repository Actions runs](https://github.com/guruPrasath4707/Student-Management-System/actions).
 
 ## 13. Privacy and security limitations
 
@@ -152,13 +152,15 @@ The application has no authentication, role-based access, audit log, encryption-
 
 ## 14. Known limitations and future work
 
-1. Decide how to safely redact or remove the tracked database and historical report after confirming that valid records are backed up and the files may be changed.
-2. Add configurable subject names and academic terms.
-3. Add structured filtering, better report-card export and clearer import-conflict messages.
-4. Make the legacy CLI import policy explicit when a file contains a roll number already present in memory.
-5. Perform a Windows desktop visual smoke test and test migration against a copy of the real legacy database.
-6. Update the historical report only after redacting identifying information and confirming the intended academic/institutional context.
+1. Resolve the tracked SQLite database and historical-asset privacy concern only after a verified backup, data-preserving migration plan and owner-approved redaction/removal decision. History cleanup, if needed, is separate from removing files from the current tree.
+2. Add configurable subject names and academic terms instead of assuming five generic subjects for every school or term.
+3. Add structured filtering and a dedicated report-card export flow; report cards are currently presented as summaries rather than a fully formatted export artifact.
+4. Perform a visual smoke test on a Windows desktop and test migration with a verified copy of the historic database. Automated GUI rendering has not been established by the current headless test suite.
+5. Consider separating Tkinter construction from application logic so UI/controller interactions can be tested without creating a window at module import time.
+6. Do not reuse the historic Word report or screenshots in a public report/presentation until the owner has confirmed the intended academic context and approved redaction of identifying content.
 7. If the project grows beyond a local learning tool, perform a separate privacy/security architecture review before adding multi-user or remote access.
+
+The legacy CLI import policy is now explicit: if an imported batch contains a roll number already present in the in-memory store, the entire import is rejected and no existing record is overwritten.
 
 ## 15. Conclusion
 
