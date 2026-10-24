@@ -1,3 +1,6 @@
+import csv
+from student_data_io import parse_student_csv_text, serialize_student_rows
+
 # Initialize an empty dictionary to store student information
 students_data = {}
 
@@ -120,27 +123,44 @@ while True:
             print(f"Roll Number: {roll}, Name: {info['Name']}, Average Marks: {info['Average Marks']:.2f}")
 
     elif choice == '8':
-        # Save data to a file
-        with open('students_data.txt', 'w') as file:
-            for roll, info in students_data.items():
-                file.write(f"{roll},{info['Name']},{','.join(map(str, info['Marks']))},{info['Average Marks']}\n")
-        print("Data saved successfully!")
+        records = [
+            (roll, info['Name'], *info['Marks'], info['Average Marks'])
+            for roll, info in sorted(students_data.items())
+        ]
+        try:
+            csv_text = serialize_student_rows(records)
+            with open('students_data.txt', 'w', newline='', encoding='utf-8') as file:
+                file.write(csv_text)
+            print("Data saved successfully!")
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(f"Data save failed: {exc}")
 
     elif choice == '9':
-        # Load data from a file
         try:
-            with open('students_data.txt', 'r') as file:
-                for line in file:
-                    data = line.strip().split(',')
-                    roll_number = data[0]
-                    name = data[1]
-                    marks_list = list(map(float, data[2].split(',')))
-                    average_marks = float(data[3])
-                    student_info = {'Name': name, 'Marks': marks_list, 'Average Marks': average_marks}
-                    students_data[roll_number] = student_info
-            print("Data loaded successfully!")
+            with open('students_data.txt', 'r', newline='', encoding='utf-8') as file:
+                csv_text = file.read()
+            loaded_records = parse_student_csv_text(csv_text)
         except FileNotFoundError:
             print("No previous data found.")
+            continue
+        except (OSError, UnicodeError, ValueError, csv.Error) as exc:
+            print(f"Data load failed. No records were changed: {exc}")
+            continue
+
+        if not loaded_records:
+            print("The data file contains no student records.")
+            continue
+
+        # Parsing validates the entire file before this loop changes the dictionary.
+        for record in loaded_records:
+            roll_number, name, *tail = record
+            marks_list, average_marks = tail[:5], tail[5]
+            students_data[roll_number] = {
+                'Name': name,
+                'Marks': list(marks_list),
+                'Average Marks': average_marks,
+            }
+        print(f"Data loaded successfully ({len(loaded_records)} records).")
 
     elif choice == '10':
         # View detailed information of a student
