@@ -141,7 +141,7 @@ The repository has automated tests for:
 - integrity checks, schema upgrade, average recomputation and database-level constraints;
 - transactional bulk insert, validation-before-write and rollback on duplicate keys; and
 - black-box CLI validation in a temporary working directory; and
-- a Windows/Python 3.12 desktop startup smoke test that uses an isolated empty database and checks SQLite integrity.
+- Windows/Python 3.12 GUI smoke tests for clean startup and repair of a blank legacy roll number, followed by successful schema upgrade while preserving the original source database.
 
 GitHub Actions compiles Python sources and runs the tests on Python 3.10, 3.12 and 3.13. The workflow is configured to exercise both Ubuntu and Windows runners; each six-job matrix must pass before a release is considered validated. See the [repository Actions runs](https://github.com/guruPrasath4707/Student-Management-System/actions).
 
