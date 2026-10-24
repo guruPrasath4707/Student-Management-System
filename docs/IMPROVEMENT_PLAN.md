@@ -48,8 +48,8 @@ Each task is intended to be completed and validated before progressing. Keep cha
 | A5 | P2 | Improve desktop CRUD workflow | Scrollable table, responsive button layout, selecting a row populates fields, clear success/error feedback, and delete confirmation | Done (CI passed; GUI still needs a human visual smoke test) |
 | A6 | P2 | Enforce persistence integrity | Schema constraints or migration, consistent average recomputation, transaction tests, and regression handling for duplicate roll numbers | Done (schema migration, constraints, average recomputation and transaction rollback tested) |
 | A7 | P2 | Strengthen automated tests and CI | Regression tests for CSV compatibility, SQLite transactions, schema initialization, and pure domain logic; tests run on supported Python versions | Done (36 tests pass on Python 3.10, 3.12 and 3.13) |
-| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | In progress (23 screenshots reviewed; DOCX is incomplete and contains identifying details; redact/rewrite after owner review) |
-| A9 | P3 | Documentation and release hygiene | Setup instructions verified on Windows/Linux, known limitations stated accurately, no generated data or private records committed | Planned |
+| A8 | P3 | Clarify legacy entry points and project report | State one supported entry point, label/archive historical variants, reconcile report with code, document screenshots and their sample-data status | Done (code-aligned technical report added; original DOCX flagged for owner-approved redaction) |
+| A9 | P3 | Documentation and release hygiene | Setup instructions verified on Windows/Linux, known limitations stated accurately, no generated data or private records committed | In progress (setup/limitations documented; tracked DB and identifying legacy DOCX remain owner-gated) |
 
 ## Working rules
 
