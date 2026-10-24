@@ -148,6 +148,7 @@ class DatabaseStorageTests(unittest.TestCase):
 
             self.assertTrue(source.is_file())
             self.assertFalse(target.exists())
+            self.assertEqual(list(base.glob("app.db.migration-*")), [])
 
     def test_refuses_to_migrate_a_database_with_an_unexpected_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
