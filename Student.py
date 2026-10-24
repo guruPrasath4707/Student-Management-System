@@ -2,12 +2,18 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
+import math
 
 from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks, validate_student_identity
 from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Open the per-user database, migrating the old working-directory file once when present.
-from student_storage import StorageError, connect_database, insert_student_records
+from student_storage import (
+    StorageError,
+    connect_database,
+    get_database_schema_version,
+    insert_student_records,
+)
 
 try:
     conn = connect_database()
@@ -43,6 +49,26 @@ def add_student():
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
 
+def _as_valid_mark(value):
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(score) or not 0 <= score <= 100:
+        return None
+    return score
+
+
+def _format_score(value):
+    if value is None:
+        return ""
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{score:.2f}" if math.isfinite(score) else str(value)
+
+
 def display_students(sort_by_average=False):
     order_clause = "average_marks DESC, roll_number" if sort_by_average else "roll_number"
     cursor.execute(
@@ -54,21 +80,46 @@ def display_students(sort_by_average=False):
     for item in student_tree.get_children():
         student_tree.delete(item)
 
+    legacy_needs_review = get_database_schema_version(conn) < 1
+    review_count = 0
     for student in students:
         roll_number, name, *scores = student
-        formatted_scores = [
-            "" if score is None else f"{float(score):.2f}"
-            for score in scores
-        ]
+        marks = [_as_valid_mark(score) for score in scores[:5]]
+        marks_are_valid = all(mark is not None for mark in marks)
+        stored_average = _as_valid_mark(scores[5])
+        average_is_stale = (
+            stored_average is None
+            or (
+                marks_are_valid
+                and abs(sum(marks) / 5.0 - stored_average) >= 0.00001
+            )
+        )
+        identity_is_invalid = not str(roll_number or "").strip() or not str(name or "").strip()
+        needs_review = identity_is_invalid or not marks_are_valid or average_is_stale
+        if legacy_needs_review and needs_review:
+            review_count += 1
+
+        displayed_average = sum(marks) / 5.0 if marks_are_valid else scores[5]
+        formatted_scores = [_format_score(score) for score in scores[:5]]
+        formatted_scores.append(_format_score(displayed_average))
         student_tree.insert(
             "", "end",
-            values=(roll_number, name or "", *formatted_scores),
+            values=(roll_number or "", name or "", *formatted_scores),
+            tags=("legacy-invalid",) if legacy_needs_review and needs_review else (),
         )
 
     if "result_label" in globals():
-        result_label.configure(
-            text=f"Student records: {len(students)}. Select a row to load it into the form."
-        )
+        if legacy_needs_review:
+            result_label.configure(
+                text=(
+                    f"Legacy database needs review: {review_count} record(s) highlighted. "
+                    "Correct them, then close and reopen the app to finish the safe upgrade."
+                )
+            )
+        else:
+            result_label.configure(
+                text=f"Student records: {len(students)}. Select a row to load it into the form."
+            )
 
 
 def clear_entries():
@@ -392,6 +443,7 @@ columns = (
 student_tree = ttk.Treeview(
     tree_frame, columns=columns, show='headings', selectmode='browse'
 )
+student_tree.tag_configure('legacy-invalid', foreground='#B42318')
 column_specs = [
     ('roll_number', 'Roll number', 120),
     ('name', 'Student name', 210),
@@ -433,4 +485,12 @@ def close_application():
 
 root.protocol('WM_DELETE_WINDOW', close_application)
 display_students()
+if get_database_schema_version(conn) < 1:
+    messagebox.showwarning(
+        'Legacy Records Need Review',
+        'The existing database contains records that do not meet the current validation rules. '
+        'The original table and records have been preserved, and affected rows are highlighted. '
+        'Select each highlighted row, correct the name or marks, then close and reopen this app '
+        'to finish the database upgrade. New entries and updates are still validated.'
+    )
 root.mainloop()
