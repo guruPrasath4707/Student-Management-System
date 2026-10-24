@@ -228,13 +228,15 @@ class DatabaseStorageTests(unittest.TestCase):
                 source, "S-INVALID", "Broken Record", marks=(10, 20, 30, 40, 101), average=40.2
             )
 
-            # Legacy rows outside today's rules must not block access to the old table.
+            # Invalid historical data remains accessible, but the schema is not falsely
+            # marked as upgraded and the original source is preserved.
             connection = connect_database(target, legacy_path=source)
             try:
                 self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 0)
-                self.assertEqual(
-                    connection.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
-                )
+                row = connection.execute(
+                    "SELECT marks_subject5, average_marks FROM students"
+                ).fetchone()
+                self.assertEqual(row, (101.0, 40.2))
             finally:
                 connection.close()
 
@@ -248,6 +250,41 @@ class DatabaseStorageTests(unittest.TestCase):
                     copied.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
                 )
                 self.assertEqual(copied.execute("PRAGMA user_version").fetchone()[0], 0)
+
+            # Simulate the user correcting the highlighted legacy record. Reopening via
+            # the app's normal connection path should then finish the constrained upgrade.
+            repair = sqlite3.connect(target)
+            try:
+                repair.execute(
+                    "UPDATE students SET marks_subject5=?, average_marks=? WHERE roll_number=?",
+                    (100, 40, "S-INVALID"),
+                )
+                repair.commit()
+            finally:
+                repair.close()
+
+            connection = connect_database(target)
+            try:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 1)
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT marks_subject5, average_marks FROM students"
+                    ).fetchone(),
+                    (100.0, 40.0),
+                )
+                schema_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='students'"
+                ).fetchone()[0].lower()
+                self.assertIn("check", schema_sql)
+                self.assertIn("not null", schema_sql)
+            finally:
+                connection.close()
+
+            # The read-only source still keeps the pre-repair row intact.
+            with sqlite3.connect(source) as original:
+                self.assertEqual(
+                    original.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
+                )
 
     def test_null_identity_fields_are_rejected_by_core_validator(self):
         from student_core import validate_student_identity
