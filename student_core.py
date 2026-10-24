@@ -60,3 +60,43 @@ def grade_for_average(average: float) -> str:
     if score >= 60:
         return "D"
     return "F"
+
+def validate_student_identity(roll_number: str | None, name: str | None) -> tuple[str, str]:
+    """Normalize and validate the two required student identity fields."""
+    normalized_roll = "" if roll_number is None else str(roll_number).strip()
+    normalized_name = "" if name is None else str(name).strip()
+    if not normalized_roll:
+        raise ValueError("Roll number is required.")
+    if not normalized_name:
+        raise ValueError("Student name is required.")
+    return normalized_roll, normalized_name
+
+def inspect_student_marks(
+    marks: Iterable[str | int | float],
+    stored_average: str | int | float | None,
+) -> tuple[bool, bool, float | None]:
+    """Inspect a legacy record without raising so the UI can flag it for review.
+
+    Returns (marks_valid, average_is_stale, calculated_average). A stale
+    average includes an unparsable/non-finite/out-of-range stored value or a
+    value that differs from the arithmetic mean. Invalid marks always require
+    review; the calculated average is None when marks are invalid.
+    """
+    try:
+        validated = parse_marks(marks)
+    except ValueError:
+        return False, True, None
+
+    calculated = sum(validated) / SUBJECT_COUNT
+    try:
+        stored = float(stored_average)
+    except (TypeError, ValueError):
+        return True, True, calculated
+    if (
+        not math.isfinite(stored)
+        or not MIN_MARK <= stored <= MAX_MARK
+        or abs(stored - calculated) >= 0.00001
+    ):
+        return True, True, calculated
+    return True, False, calculated
+

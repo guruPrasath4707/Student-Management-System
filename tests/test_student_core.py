@@ -2,7 +2,13 @@
 
 import unittest
 
-from student_core import calculate_average, grade_for_average, parse_marks
+from student_core import (
+    calculate_average,
+    grade_for_average,
+    inspect_student_marks,
+    parse_marks,
+    validate_student_identity,
+)
 
 
 class ParseMarksTests(unittest.TestCase):
@@ -49,6 +55,52 @@ class AverageAndGradeTests(unittest.TestCase):
             with self.subTest(average=average):
                 with self.assertRaises(ValueError):
                     grade_for_average(average)
+
+
+class StudentIdentityTests(unittest.TestCase):
+    def test_trims_required_identity_fields(self):
+        self.assertEqual(validate_student_identity("  S-10  ", "  Sam Student  "), ("S-10", "Sam Student"))
+
+    def test_rejects_blank_roll_number_or_name(self):
+        for roll, name in (("", "Name"), ("  ", "Name"), ("S-11", ""), ("S-11", "  ")):
+            with self.subTest(roll=roll, name=name):
+                with self.assertRaises(ValueError):
+                    validate_student_identity(roll, name)
+
+
+class LegacyRecordInspectionTests(unittest.TestCase):
+    def test_valid_marks_and_matching_average_need_no_review(self):
+        self.assertEqual(
+            inspect_student_marks([10, 20, 30, 40, 50], 30),
+            (True, False, 30.0),
+        )
+
+    def test_stale_average_is_detected_and_recomputed(self):
+        self.assertEqual(
+            inspect_student_marks([10, 20, 30, 40, 50], 99),
+            (True, True, 30.0),
+        )
+
+    def test_invalid_marks_are_detected_without_raising(self):
+        for marks in (
+            [10, 20, 30, 40, 101],
+            [10, 20, "bad", 40, 50],
+            [10, 20, float("nan"), 40, 50],
+        ):
+            with self.subTest(marks=marks):
+                valid, stale, average = inspect_student_marks(marks, 30)
+                self.assertFalse(valid)
+                self.assertTrue(stale)
+                self.assertIsNone(average)
+
+    def test_non_numeric_or_non_finite_averages_need_review(self):
+        for average in ("bad", "nan", float("inf"), -1, 101, None):
+            with self.subTest(average=average):
+                self.assertEqual(
+                    inspect_student_marks([10, 20, 30, 40, 50], average),
+                    (True, True, 30.0),
+                )
+
 
 
 if __name__ == "__main__":

@@ -1,41 +1,41 @@
-import csv
 import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
+import math
 
-from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks
+from student_core import (
+    calculate_average as calculate_marks_average,
+    grade_for_average,
+    inspect_student_marks,
+    parse_marks,
+    validate_student_identity,
+)
+from student_data_io import parse_student_csv_text, serialize_student_rows
 
-# Create a SQLite database connection
-conn = sqlite3.connect('students_database.db')
+# Open the per-user database, migrating the old working-directory file once when present.
+from student_storage import (
+    StorageError,
+    connect_database,
+    get_database_schema_version,
+    insert_student_records,
+)
+
+try:
+    conn = connect_database()
+except (StorageError, OSError) as exc:
+    error_root = tk.Tk()
+    error_root.withdraw()
+    messagebox.showerror('Database Error', f"Could not open the student database: {exc}", parent=error_root)
+    error_root.destroy()
+    raise SystemExit(1) from exc
+
 cursor = conn.cursor()
-
-# Create a table to store student information
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS students (
-        roll_number TEXT PRIMARY KEY,
-        name TEXT,
-        marks_subject1 REAL,
-        marks_subject2 REAL,
-        marks_subject3 REAL,
-        marks_subject4 REAL,
-        marks_subject5 REAL,
-        average_marks REAL
-    )
-''')
-conn.commit()
 
 
 def add_student():
-    roll_number = entry_roll.get().strip()
-    name = entry_name.get().strip()
-    if not roll_number:
-        messagebox.showerror('Invalid Input', 'Roll number is required.')
-        return
-    if not name:
-        messagebox.showerror('Invalid Input', 'Student name is required.')
-        return
     try:
+        roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
         marks = parse_marks(entry.get() for entry in entry_marks)
     except ValueError as exc:
         messagebox.showerror('Invalid Input', str(exc))
@@ -55,14 +55,75 @@ def add_student():
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
 
-def display_students():
-    cursor.execute('SELECT * FROM students')
-    students = cursor.fetchall()
-    result_text.set('')
+def _format_score(value):
+    if value is None:
+        return ""
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{score:.2f}" if math.isfinite(score) else str(value)
 
+
+def display_students(sort_by_average=False):
+    cursor.execute(
+        "SELECT rowid, roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
+        "marks_subject4, marks_subject5, average_marks FROM students ORDER BY roll_number"
+    )
+    students = cursor.fetchall()
+    if sort_by_average:
+        def sort_key(record):
+            marks_valid, _average_stale, computed_average = inspect_student_marks(
+                record[3:8], record[8]
+            )
+            return (not marks_valid, -(computed_average or 0.0), str(record[1] or ""))
+
+        students.sort(key=sort_key)
+
+    for item in student_tree.get_children():
+        student_tree.delete(item)
+
+    legacy_needs_review = get_database_schema_version(conn) < 1
+    review_count = 0
     for student in students:
-        result_text.set(result_text.get() +
-                       f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}\n")
+        row_id, roll_number, name, *scores = student
+        marks_are_valid, average_is_stale, computed_average = inspect_student_marks(
+            scores[:5], scores[5]
+        )
+        identity_is_invalid = not str(roll_number or "").strip() or not str(name or "").strip()
+        needs_review = identity_is_invalid or not marks_are_valid or average_is_stale
+        if legacy_needs_review and needs_review:
+            review_count += 1
+
+        displayed_average = computed_average if marks_are_valid else scores[5]
+        formatted_scores = [_format_score(score) for score in scores[:5]]
+        formatted_scores.append(_format_score(displayed_average))
+        student_tree.insert(
+            "", "end",
+            iid=str(row_id),
+            values=(roll_number or "", name or "", *formatted_scores),
+            tags=("legacy-invalid",) if legacy_needs_review and needs_review else (),
+        )
+
+    if "result_label" in globals():
+        if legacy_needs_review and review_count:
+            result_label.configure(
+                text=(
+                    f"Legacy database needs review: {review_count} record(s) highlighted. "
+                    "Correct them, then close and reopen the app to finish the safe upgrade."
+                )
+            )
+        elif legacy_needs_review:
+            result_label.configure(
+                text=(
+                    "Legacy records have been corrected. Close and reopen the app to finish "
+                    "the safe database upgrade."
+                )
+            )
+        else:
+            result_label.configure(
+                text=f"Student records: {len(students)}. Select a row to load it into the form."
+            )
 
 
 def clear_entries():
@@ -72,21 +133,99 @@ def clear_entries():
         entry.delete(0, tk.END)
 
 
+def select_student_in_table(roll_number):
+    for item in student_tree.get_children():
+        values = student_tree.item(item, "values")
+        if values and str(values[0]).strip() == roll_number:
+            student_tree.selection_set(item)
+            student_tree.focus(item)
+            student_tree.see(item)
+            load_selected_student()
+            return True
+    return False
+
+
+def load_selected_student(event=None):
+    selected = student_tree.selection()
+    if not selected:
+        return
+    values = student_tree.item(selected[0], "values")
+    if len(values) < 8:
+        return
+
+    clear_entries()
+    entry_roll.insert(0, values[0])
+    entry_name.insert(0, values[1])
+    for entry, mark in zip(entry_marks, values[2:7]):
+        entry.insert(0, mark)
+
+
 def search_student():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter a roll number to search.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
     if student:
-        messagebox.showinfo('Student Found', f"Roll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}")
+        display_students()
+        select_student_in_table(roll_number)
+        messagebox.showinfo(
+            'Student Found',
+            f"Roll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
+        )
     else:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
 
 
 def update_student():
-    roll_number = entry_roll.get().strip()
-    if not roll_number:
-        messagebox.showerror('Invalid Input', 'Enter the roll number of the student to update.')
+    try:
+        roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
+        marks = parse_marks(entry.get() for entry in entry_marks)
+    except ValueError as exc:
+        messagebox.showerror('Invalid Input', str(exc))
+        return
+
+    average_marks = calculate_marks_average(marks)
+    selected = student_tree.selection()
+    selected_row = None
+    if selected:
+        try:
+            row_id = int(selected[0])
+        except ValueError:
+            row_id = None
+        if row_id is not None:
+            selected_row = cursor.execute(
+                "SELECT rowid, roll_number FROM students WHERE rowid=?", (row_id,)
+            ).fetchone()
+
+    # Use the selected row's stable SQLite rowid when correcting a legacy blank
+    # roll number, or when normalizing an existing roll number with whitespace.
+    # This makes those historic records repairable without weakening validation.
+    if selected_row and (
+        not str(selected_row[1] or "").strip()
+        or roll_number == str(selected_row[1] or "").strip()
+    ):
+        try:
+            cursor.execute('''
+                UPDATE students
+                SET roll_number=?, name=?, marks_subject1=?, marks_subject2=?,
+                    marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
+                WHERE rowid=?
+            ''', (roll_number, name, *marks, average_marks, selected_row[0]))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            messagebox.showerror(
+                'Update Failed',
+                f"Roll number {roll_number} already exists. The selected record was not changed."
+            )
+            return
+        messagebox.showinfo('Success', 'Student information updated successfully!')
+        clear_entries()
+        display_students()
         return
 
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
@@ -96,66 +235,83 @@ def update_student():
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
         return
 
-    name = entry_name.get().strip()
-    if not name:
-        messagebox.showerror('Invalid Input', 'Student name is required.')
-        return
     try:
-        marks = parse_marks(entry.get() for entry in entry_marks)
-    except ValueError as exc:
-        messagebox.showerror('Invalid Input', str(exc))
+        cursor.execute('''
+            UPDATE students
+            SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
+            WHERE roll_number=?
+        ''', (name, *marks, average_marks, roll_number))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        messagebox.showerror('Update Failed', 'Student information could not be updated.')
         return
 
-    average_marks = calculate_marks_average(marks)
-    cursor.execute('''
-        UPDATE students
-        SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
-        WHERE roll_number=?
-    ''', (name, *marks, average_marks, roll_number))
-    conn.commit()
     messagebox.showinfo('Success', 'Student information updated successfully!')
     clear_entries()
     display_students()
 
+
 def calculate_average():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to calculate average marks.')
-    else:
-        average_text = 'Average Marks of all students:'
-        for student in students:
-            average_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
-        messagebox.showinfo('Average Marks', average_text)
+        return
+
+    average_text = 'Average marks recalculated from subject marks:'
+    for student in students:
+        marks_valid, _average_stale, computed_average = inspect_student_marks(
+            student[2:7], student[7]
+        )
+        average_text += (
+            f"\nRoll Number: {student[0]}, Name: {student[1]}, "
+            f"Average Marks: {computed_average:.2f}"
+            if marks_valid
+            else f"\nRoll Number: {student[0]}, Name: {student[1]}, Needs review (invalid marks)"
+        )
+    messagebox.showinfo('Average Marks', average_text)
 
 
 def calculate_grades():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to calculate grades.')
-    else:
-        grades_text = 'Grades of all students:'
-        for student in students:
-            average_marks = student[7]
-            grade = grade_for_average(average_marks)
-            grades_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Grade: {grade}"
-        messagebox.showinfo('Grades', grades_text)
+        return
+
+    grades_text = 'Grades calculated from current subject marks:'
+    for student in students:
+        marks_valid, _average_stale, computed_average = inspect_student_marks(
+            student[2:7], student[7]
+        )
+        if marks_valid:
+            grade = grade_for_average(computed_average)
+            line = f"\nRoll Number: {student[0]}, Name: {student[1]}, Grade: {grade}"
+        else:
+            line = (
+                f"\nRoll Number: {student[0]}, Name: {student[1]}, "
+                "Grade: Needs review (invalid marks)"
+            )
+        grades_text += line
+    messagebox.showinfo('Grades', grades_text)
 
 
 def sort_students():
-    cursor.execute('SELECT * FROM students ORDER BY average_marks DESC')
+    cursor.execute('SELECT * FROM students ORDER BY average_marks DESC, roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to sort.')
-    else:
-        sorted_text = 'Students sorted by Average Marks:'
-        for student in students:
-            sorted_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
-        messagebox.showinfo('Sorted Students', sorted_text)
+        return
+
+    display_students(sort_by_average=True)
+    sorted_text = 'Students sorted by Average Marks:'
+    for student in students:
+        sorted_text += f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}"
+    messagebox.showinfo('Sorted Students', sorted_text)
 
 
 def save_to_file():
@@ -167,11 +323,11 @@ def save_to_file():
         return
 
     try:
+        csv_text = serialize_student_rows(students)
         with open('students_data.txt', 'w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerows(students)
-    except OSError as exc:
-        messagebox.showerror('Save Failed', f"Could not save student data: {exc}")
+            file.write(csv_text)
+    except (OSError, UnicodeError, ValueError) as exc:
+        messagebox.showerror('Save Failed', f"Could not export student data: {exc}")
         return
     messagebox.showinfo('Data Saved', 'Student data exported to students_data.txt.')
 
@@ -179,33 +335,19 @@ def save_to_file():
 def load_from_file():
     try:
         with open('students_data.txt', 'r', newline='', encoding='utf-8') as file:
-            rows = list(csv.reader(file))
+            csv_text = file.read()
 
-        if not rows:
-            messagebox.showinfo('No Data', 'The import file is empty.')
+        prepared_rows = parse_student_csv_text(csv_text)
+        if not prepared_rows:
+            messagebox.showinfo('No Data', 'The import file contains no student records.')
             return
 
-        prepared_rows = []
-        for line_number, data in enumerate(rows, start=1):
-            if len(data) != 8:
-                raise ValueError(f"Line {line_number} must contain a roll number, name, five marks, and an average.")
-            roll_number, name = data[0].strip(), data[1].strip()
-            if not roll_number or not name:
-                raise ValueError(f"Line {line_number} is missing a roll number or student name.")
-            marks = parse_marks(data[2:7])
-            average_marks = calculate_marks_average(marks)
-            prepared_rows.append((roll_number, name, *marks, average_marks))
-
-        # The context manager rolls the entire import back if any row conflicts.
-        with conn:
-            cursor.executemany('''
-                INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', prepared_rows)
+        # This helper validates the rows and inserts the complete batch transactionally.
+        insert_student_records(conn, prepared_rows)
     except FileNotFoundError:
         messagebox.showinfo('File Not Found', 'No previous data found.')
         return
-    except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.IntegrityError) as exc:
+    except (OSError, UnicodeError, ValueError, sqlite3.IntegrityError) as exc:
         messagebox.showerror('Import Failed', f"Student data was not imported: {exc}")
         return
 
@@ -214,124 +356,239 @@ def load_from_file():
 
 
 def view_student_details():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    if not roll_number:
+        messagebox.showerror('Invalid Input', 'Enter a roll number to view details.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
     if student:
-        details_text = f"\nStudent Details - Roll Number: {student[0]}\nName: {student[1]}\nMarks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\nAverage Marks: {student[7]:.2f}"
+        select_student_in_table(roll_number)
+        details_text = (
+            f"Student Details - Roll Number: {student[0]}\nName: {student[1]}\n"
+            f"Marks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\n"
+            f"Average Marks: {student[7]:.2f}"
+        )
         messagebox.showinfo('Student Details', details_text)
     else:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
 
 
 def remove_student():
-    roll_number = entry_roll.get()
+    roll_number = entry_roll.get().strip()
+    selected_row = None
+    if not roll_number:
+        selected = student_tree.selection()
+        if selected:
+            try:
+                row_id = int(selected[0])
+            except ValueError:
+                row_id = None
+            if row_id is not None:
+                selected_row = cursor.execute(
+                    "SELECT rowid, * FROM students WHERE rowid=?", (row_id,)
+                ).fetchone()
+
+        if selected_row and not str(selected_row[1] or "").strip():
+            if not messagebox.askyesno(
+                'Confirm Removal',
+                'This legacy record has no roll number. Remove the selected record? This cannot be undone.'
+            ):
+                return
+            cursor.execute('DELETE FROM students WHERE rowid=?', (selected_row[0],))
+            conn.commit()
+            clear_entries()
+            display_students()
+            messagebox.showinfo('Success', 'The selected legacy record was removed.')
+            return
+
+        messagebox.showerror('Invalid Input', 'Enter a roll number or select a legacy record with a blank roll number.')
+        return
+
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
     student = cursor.fetchone()
 
-    if student:
-        cursor.execute('DELETE FROM students WHERE roll_number=?', (roll_number,))
-        conn.commit()
-        messagebox.showinfo('Success', f"Student with Roll Number {roll_number} removed successfully!")
-        clear_entries()
-        display_students()
-    else:
+    if not student:
         messagebox.showinfo('Student Not Found', f"No student found with Roll Number {roll_number}")
+        return
+
+    if not messagebox.askyesno(
+        'Confirm Removal',
+        f"Remove student {student[1]} (roll number {student[0]})? This cannot be undone."
+    ):
+        return
+
+    cursor.execute('DELETE FROM students WHERE roll_number=?', (roll_number,))
+    conn.commit()
+    messagebox.showinfo('Success', f"Student with Roll Number {roll_number} removed successfully!")
+    clear_entries()
+    display_students()
 
 
 def generate_report_cards():
-    cursor.execute('SELECT * FROM students')
+    cursor.execute('SELECT * FROM students ORDER BY roll_number')
     students = cursor.fetchall()
 
     if not students:
         messagebox.showinfo('No Students', 'No students in the system to generate report cards.')
-    else:
-        report_text = 'Report Cards for all students:'
-        for student in students:
-            report_text += f"\n\nRoll Number: {student[0]}\nName: {student[1]}\nAverage Marks: {student[7]:.2f}\n"
-            average_marks = student[7]
-            grade = grade_for_average(average_marks)
-            report_text += f"Grade: {grade}\nSubject-wise Marks: {student[2]}, {student[3]}, {student[4]}, {student[5]}, {student[6]}\nTotal Marks: {sum(student[2:7])}\n"
-        messagebox.showinfo('Report Cards', report_text)
+        return
+
+    report_text = 'Report Cards recalculated from current subject marks:'
+    for student in students:
+        marks = student[2:7]
+        marks_valid, _average_stale, computed_average = inspect_student_marks(marks, student[7])
+        report_text += f"\n\nRoll Number: {student[0]}\nName: {student[1]}\n"
+        report_text += f"Subject-wise Marks: {', '.join(_format_score(mark) for mark in marks)}\n"
+        if marks_valid:
+            grade = grade_for_average(computed_average)
+            report_text += (
+                f"Average Marks: {computed_average:.2f}\nGrade: {grade}\n"
+                f"Total Marks: {sum(float(mark) for mark in marks):.2f}\n"
+            )
+        else:
+            report_text += "Average Marks: Needs review\nGrade: Needs review\nTotal Marks: unavailable\n"
+    messagebox.showinfo('Report Cards', report_text)
 
 
-# Create the main window
+# Build the desktop interface.
 root = tk.Tk()
 root.title('Student Management System')
+root.geometry('1180x760')
+root.minsize(880, 600)
+root.columnconfigure(0, weight=1)
+root.rowconfigure(3, weight=1)
 
-# Set custom font (replace 'YourFont.ttf' with the actual font file name)
 custom_font = tkfont.nametofont('TkDefaultFont').copy()
 custom_font.configure(size=10)
-style = ttk.Style()
-style.configure('TButton', padding=5, relief='flat', background='#3498db', foreground='white', font=custom_font)
-style.map('TButton', background=[('active', '#2980b9')])
+style = ttk.Style(root)
+style.configure('TButton', padding=(8, 6), font=custom_font)
+style.configure('Treeview', rowheight=25, font=custom_font)
+style.configure('Treeview.Heading', font=(custom_font.actual('family'), 10, 'bold'))
 
-# Create and set variables
-result_text = tk.StringVar()
+# Student input form
+entry_frame = ttk.LabelFrame(root, text='Student details', padding=12)
+entry_frame.grid(row=0, column=0, sticky='ew', padx=12, pady=(12, 6))
+for column in range(5):
+    entry_frame.columnconfigure(column, weight=1)
 
-# Create a frame for entry widgets
-entry_frame = ttk.Frame(root, padding=(10, 10, 10, 0))
-entry_frame.grid(row=0, column=0, columnspan=2)
-
-# Create labels, entry widgets, and buttons
 label_roll = ttk.Label(entry_frame, text='Roll Number:', font=custom_font)
 label_name = ttk.Label(entry_frame, text='Name:', font=custom_font)
-label_marks = [ttk.Label(entry_frame, text=f'Marks Subject {i + 1}:', font=custom_font) for i in range(5)]
-
+label_marks = [
+    ttk.Label(entry_frame, text=f'Subject {i + 1} mark:', font=custom_font)
+    for i in range(5)
+]
 entry_roll = ttk.Entry(entry_frame, font=custom_font)
 entry_name = ttk.Entry(entry_frame, font=custom_font)
 entry_marks = [ttk.Entry(entry_frame, font=custom_font) for _ in range(5)]
 
-button_add = ttk.Button(root, text='Add Student', command=add_student)
-button_display = ttk.Button(root, text='Display Students', command=display_students)
-button_search = ttk.Button(root, text='Search Student', command=search_student)
-button_update = ttk.Button(root, text='Update Student', command=update_student)
-button_avg_marks = ttk.Button(root, text='Calculate Average Marks', command=calculate_average)
-button_grades = ttk.Button(root, text='Calculate Grades', command=calculate_grades)
-button_sort = ttk.Button(root, text='Sort Students', command=sort_students)
-button_save = ttk.Button(root, text='Save to File', command=save_to_file)
-button_load = ttk.Button(root, text='Load from File', command=load_from_file)
-button_details = ttk.Button(root, text='View Student Details', command=view_student_details)
-button_remove = ttk.Button(root, text='Remove Student', command=remove_student)
-button_report_cards = ttk.Button(root, text='Generate Report Cards', command=generate_report_cards)
-
-# Set the layout using grid
-label_roll.grid(row=0, column=0, padx=5, pady=5)
-entry_roll.grid(row=0, column=1, padx=5, pady=5)
-label_name.grid(row=1, column=0, padx=5, pady=5)
-entry_name.grid(row=1, column=1, padx=5, pady=5)
-
+label_roll.grid(row=0, column=0, sticky='w', padx=5, pady=4)
+entry_roll.grid(row=0, column=1, columnspan=4, sticky='ew', padx=5, pady=4)
+label_name.grid(row=1, column=0, sticky='w', padx=5, pady=4)
+entry_name.grid(row=1, column=1, columnspan=4, sticky='ew', padx=5, pady=4)
 for i in range(5):
-    label_marks[i].grid(row=2, column=i, padx=5, pady=5)
-    entry_marks[i].grid(row=3, column=i, padx=5, pady=5)
+    label_marks[i].grid(row=2, column=i, sticky='w', padx=5, pady=(8, 2))
+    entry_marks[i].grid(row=3, column=i, sticky='ew', padx=5, pady=2)
 
-# Create a frame for action buttons
-button_frame = ttk.Frame(root, padding=(10, 10, 10, 10))
-button_frame.grid(row=1, column=0, columnspan=2)
+# Responsive action grid: buttons now belong to their actual parent frame.
+button_frame = ttk.Frame(root, padding=(12, 4, 12, 8))
+button_frame.grid(row=1, column=0, sticky='ew')
+for column in range(4):
+    button_frame.columnconfigure(column, weight=1)
 
-button_add.grid(row=0, column=0, padx=5, pady=5)
-button_display.grid(row=0, column=1, padx=5, pady=5)
-button_search.grid(row=0, column=2, padx=5, pady=5)
-button_update.grid(row=0, column=3, padx=5, pady=5)
-button_avg_marks.grid(row=0, column=4, padx=5, pady=5)
-button_grades.grid(row=0, column=5, padx=5, pady=5)
-button_sort.grid(row=0, column=6, padx=5, pady=5)
-button_save.grid(row=0, column=7, padx=5, pady=5)
-button_load.grid(row=0, column=8, padx=5, pady=5)
-button_details.grid(row=0, column=9, padx=5, pady=5)
-button_remove.grid(row=0, column=10, padx=5, pady=5)
-button_report_cards.grid(row=0, column=11, padx=5, pady=5)
+button_add = ttk.Button(button_frame, text='Add Student', command=add_student)
+button_display = ttk.Button(button_frame, text='Refresh List', command=display_students)
+button_search = ttk.Button(button_frame, text='Search Student', command=search_student)
+button_update = ttk.Button(button_frame, text='Update Student', command=update_student)
+button_avg_marks = ttk.Button(button_frame, text='Student Averages', command=calculate_average)
+button_grades = ttk.Button(button_frame, text='Calculate Grades', command=calculate_grades)
+button_sort = ttk.Button(button_frame, text='Sort by Average', command=sort_students)
+button_save = ttk.Button(button_frame, text='Export CSV', command=save_to_file)
+button_load = ttk.Button(button_frame, text='Import CSV', command=load_from_file)
+button_details = ttk.Button(button_frame, text='View Details', command=view_student_details)
+button_remove = ttk.Button(button_frame, text='Remove Student', command=remove_student)
+button_report_cards = ttk.Button(button_frame, text='Report Cards', command=generate_report_cards)
 
-# Create a text widget for displaying results
-result_label = ttk.Label(root, text='Student Information:', font=custom_font)
-result_label.grid(row=2, column=0, columnspan=2, pady=(10, 0))
+buttons = [
+    (button_add, 0, 0), (button_display, 0, 1),
+    (button_search, 0, 2), (button_update, 0, 3),
+    (button_avg_marks, 1, 0), (button_grades, 1, 1),
+    (button_sort, 1, 2), (button_save, 1, 3),
+    (button_load, 2, 0), (button_details, 2, 1),
+    (button_remove, 2, 2), (button_report_cards, 2, 3),
+]
+for button, row, column in buttons:
+    button.grid(row=row, column=column, sticky='ew', padx=4, pady=4)
 
-result_display = ttk.Label(root, textvariable=result_text, justify='left', font=custom_font)
-result_display.grid(row=3, column=0, columnspan=2, pady=(0, 10))
+result_label = ttk.Label(
+    root,
+    text='Student records. Select a row to load it into the form.',
+    font=custom_font,
+)
+result_label.grid(row=2, column=0, sticky='w', padx=14, pady=(2, 5))
 
-# Start the main loop
+# Scrollable table of records, including all five subject marks.
+tree_frame = ttk.Frame(root, padding=(12, 0, 12, 12))
+tree_frame.grid(row=3, column=0, sticky='nsew')
+tree_frame.columnconfigure(0, weight=1)
+tree_frame.rowconfigure(0, weight=1)
+
+columns = (
+    'roll_number', 'name', 'subject1', 'subject2', 'subject3',
+    'subject4', 'subject5', 'average',
+)
+student_tree = ttk.Treeview(
+    tree_frame, columns=columns, show='headings', selectmode='browse'
+)
+student_tree.tag_configure('legacy-invalid', foreground='#B42318')
+column_specs = [
+    ('roll_number', 'Roll number', 120),
+    ('name', 'Student name', 210),
+    ('subject1', 'Subject 1', 105),
+    ('subject2', 'Subject 2', 105),
+    ('subject3', 'Subject 3', 105),
+    ('subject4', 'Subject 4', 105),
+    ('subject5', 'Subject 5', 105),
+    ('average', 'Average', 110),
+]
+for column, heading, width in column_specs:
+    student_tree.heading(column, text=heading)
+    student_tree.column(
+        column, width=width, minwidth=85,
+        stretch=(column in ('roll_number', 'name', 'average')),
+        anchor='w' if column in ('roll_number', 'name') else 'center',
+    )
+
+vertical_scrollbar = ttk.Scrollbar(
+    tree_frame, orient='vertical', command=student_tree.yview
+)
+horizontal_scrollbar = ttk.Scrollbar(
+    tree_frame, orient='horizontal', command=student_tree.xview
+)
+student_tree.configure(
+    yscrollcommand=vertical_scrollbar.set,
+    xscrollcommand=horizontal_scrollbar.set,
+)
+student_tree.grid(row=0, column=0, sticky='nsew')
+vertical_scrollbar.grid(row=0, column=1, sticky='ns')
+horizontal_scrollbar.grid(row=1, column=0, sticky='ew')
+student_tree.bind('<<TreeviewSelect>>', load_selected_student)
+
+def close_application():
+    try:
+        conn.close()
+    finally:
+        root.destroy()
+
+root.protocol('WM_DELETE_WINDOW', close_application)
+display_students()
+if get_database_schema_version(conn) < 1:
+    messagebox.showwarning(
+        'Legacy Records Need Review',
+        'The existing database contains records that do not meet the current validation rules. '
+        'The original table and records have been preserved, and affected rows are highlighted. '
+        'Select each highlighted row, correct the name or marks, then close and reopen this app '
+        'to finish the database upgrade. New entries and updates are still validated.'
+    )
 root.mainloop()
-
-# Close the database connection when the program exits
-conn.close()
