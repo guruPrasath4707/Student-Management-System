@@ -2,7 +2,7 @@
 
 Last audited: 2026-10-25
 Audit branch: `work/student-management-hardening-2026-10-25`
-Default branch: `main` (kept unchanged)
+Default branch: `main` (PR #1's initial hardening tranche merged at `0ac1ede`; the subsequent audit and improvements are in PR #2)
 
 ## Repository inventory
 
