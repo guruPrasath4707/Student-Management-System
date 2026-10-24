@@ -310,5 +310,38 @@ class DatabaseStorageTests(unittest.TestCase):
                 connection.close()
 
 
+    def test_rejects_legacy_table_mislabelled_as_current_schema(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "mislabeled.db"
+            self.create_database(target, "S-OLD", "Original Record")
+            with sqlite3.connect(target) as connection:
+                connection.execute("PRAGMA user_version = 1")
+
+            with self.assertRaisesRegex(StorageError, "missing required constraints"):
+                connect_database(target)
+
+            with sqlite3.connect(target) as unchanged:
+                self.assertEqual(
+                    unchanged.execute("SELECT roll_number, name FROM students").fetchone(),
+                    ("S-OLD", "Original Record"),
+                )
+                sql = unchanged.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='students'"
+                ).fetchone()[0]
+                self.assertNotIn("CHECK", sql.upper())
+
+    def test_rejects_database_created_by_a_newer_schema_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "future.db"
+            connection = connect_database(target)
+            connection.close()
+            with sqlite3.connect(target) as newer:
+                newer.execute("PRAGMA user_version = 2")
+
+            with self.assertRaisesRegex(StorageError, "newer than this application supports"):
+                connect_database(target)
+
+
+
 if __name__ == "__main__":
     unittest.main()
