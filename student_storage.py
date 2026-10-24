@@ -297,3 +297,44 @@ def connect_database(
         if "connection" in locals():
             connection.close()
         raise StorageError(f"Could not open student database at {target}: {exc}") from exc
+
+def insert_student_records(
+    connection: sqlite3.Connection,
+    records: list[tuple[object, ...]],
+) -> int:
+    """Validate and atomically insert a batch of student records.
+
+    Every input record is validated and its average recomputed before the
+    transaction starts. A duplicate key or database constraint failure rolls
+    the entire batch back through SQLite's connection context manager.
+    """
+    prepared_rows = []
+    seen_roll_numbers: set[str] = set()
+    for row_number, record in enumerate(records, start=1):
+        if len(record) != 8:
+            raise ValueError(f"Record {row_number} must contain exactly eight fields.")
+        try:
+            roll_number, name = validate_student_identity(record[0], record[1])
+            if roll_number in seen_roll_numbers:
+                raise ValueError(f"Record {row_number} repeats roll number {roll_number!r}.")
+            marks = parse_marks(record[2:7])
+        except ValueError as exc:
+            raise ValueError(f"Invalid student record {row_number}: {exc}") from exc
+        prepared_rows.append(
+            (roll_number, name, *marks, calculate_average(marks))
+        )
+        seen_roll_numbers.add(roll_number)
+
+    if not prepared_rows:
+        return 0
+
+    with connection:
+        connection.executemany(
+            "INSERT INTO students "
+            "(roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
+            "marks_subject4, marks_subject5, average_marks) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            prepared_rows,
+        )
+    return len(prepared_rows)
+
