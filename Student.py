@@ -68,16 +68,16 @@ def _format_score(value):
 
 def display_students(sort_by_average=False):
     cursor.execute(
-        "SELECT roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
+        "SELECT rowid, roll_number, name, marks_subject1, marks_subject2, marks_subject3, "
         "marks_subject4, marks_subject5, average_marks FROM students ORDER BY roll_number"
     )
     students = cursor.fetchall()
     if sort_by_average:
         def sort_key(record):
             marks_valid, _average_stale, computed_average = inspect_student_marks(
-                record[2:7], record[7]
+                record[3:8], record[8]
             )
-            return (not marks_valid, -(computed_average or 0.0), str(record[0] or ""))
+            return (not marks_valid, -(computed_average or 0.0), str(record[1] or ""))
 
         students.sort(key=sort_key)
 
@@ -87,7 +87,7 @@ def display_students(sort_by_average=False):
     legacy_needs_review = get_database_schema_version(conn) < 1
     review_count = 0
     for student in students:
-        roll_number, name, *scores = student
+        row_id, roll_number, name, *scores = student
         marks_are_valid, average_is_stale, computed_average = inspect_student_marks(
             scores[:5], scores[5]
         )
@@ -101,6 +101,7 @@ def display_students(sort_by_average=False):
         formatted_scores.append(_format_score(displayed_average))
         student_tree.insert(
             "", "end",
+            iid=str(row_id),
             values=(roll_number or "", name or "", *formatted_scores),
             tags=("legacy-invalid",) if legacy_needs_review and needs_review else (),
         )
@@ -176,8 +177,49 @@ def search_student():
 def update_student():
     try:
         roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
+        marks = parse_marks(entry.get() for entry in entry_marks)
     except ValueError as exc:
         messagebox.showerror('Invalid Input', str(exc))
+        return
+
+    average_marks = calculate_marks_average(marks)
+    selected = student_tree.selection()
+    selected_row = None
+    if selected:
+        try:
+            row_id = int(selected[0])
+        except ValueError:
+            row_id = None
+        if row_id is not None:
+            selected_row = cursor.execute(
+                "SELECT rowid, roll_number FROM students WHERE rowid=?", (row_id,)
+            ).fetchone()
+
+    # Use the selected row's stable SQLite rowid when correcting a legacy blank
+    # roll number, or when normalizing an existing roll number with whitespace.
+    # This makes those historic records repairable without weakening validation.
+    if selected_row and (
+        not str(selected_row[1] or "").strip()
+        or roll_number == str(selected_row[1] or "").strip()
+    ):
+        try:
+            cursor.execute('''
+                UPDATE students
+                SET roll_number=?, name=?, marks_subject1=?, marks_subject2=?,
+                    marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
+                WHERE rowid=?
+            ''', (roll_number, name, *marks, average_marks, selected_row[0]))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            messagebox.showerror(
+                'Update Failed',
+                f"Roll number {roll_number} already exists. The selected record was not changed."
+            )
+            return
+        messagebox.showinfo('Success', 'Student information updated successfully!')
+        clear_entries()
+        display_students()
         return
 
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
@@ -188,21 +230,21 @@ def update_student():
         return
 
     try:
-        marks = parse_marks(entry.get() for entry in entry_marks)
-    except ValueError as exc:
-        messagebox.showerror('Invalid Input', str(exc))
+        cursor.execute('''
+            UPDATE students
+            SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
+            WHERE roll_number=?
+        ''', (name, *marks, average_marks, roll_number))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        messagebox.showerror('Update Failed', 'Student information could not be updated.')
         return
 
-    average_marks = calculate_marks_average(marks)
-    cursor.execute('''
-        UPDATE students
-        SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
-        WHERE roll_number=?
-    ''', (name, *marks, average_marks, roll_number))
-    conn.commit()
     messagebox.showinfo('Success', 'Student information updated successfully!')
     clear_entries()
     display_students()
+
 
 def calculate_average():
     cursor.execute('SELECT * FROM students ORDER BY roll_number')
@@ -330,8 +372,33 @@ def view_student_details():
 
 def remove_student():
     roll_number = entry_roll.get().strip()
+    selected_row = None
     if not roll_number:
-        messagebox.showerror('Invalid Input', 'Enter the roll number of the student to remove.')
+        selected = student_tree.selection()
+        if selected:
+            try:
+                row_id = int(selected[0])
+            except ValueError:
+                row_id = None
+            if row_id is not None:
+                selected_row = cursor.execute(
+                    "SELECT rowid, * FROM students WHERE rowid=?", (row_id,)
+                ).fetchone()
+
+        if selected_row and not str(selected_row[1] or "").strip():
+            if not messagebox.askyesno(
+                'Confirm Removal',
+                'This legacy record has no roll number. Remove the selected record? This cannot be undone.'
+            ):
+                return
+            cursor.execute('DELETE FROM students WHERE rowid=?', (selected_row[0],))
+            conn.commit()
+            clear_entries()
+            display_students()
+            messagebox.showinfo('Success', 'The selected legacy record was removed.')
+            return
+
+        messagebox.showerror('Invalid Input', 'Enter a roll number or select a legacy record with a blank roll number.')
         return
 
     cursor.execute('SELECT * FROM students WHERE roll_number=?', (roll_number,))
