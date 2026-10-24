@@ -5,6 +5,7 @@ import tkinter.font as tkfont
 import sqlite3
 
 from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks
+from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Create a SQLite database connection
 conn = sqlite3.connect('students_database.db')
@@ -167,11 +168,11 @@ def save_to_file():
         return
 
     try:
+        csv_text = serialize_student_rows(students)
         with open('students_data.txt', 'w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerows(students)
-    except OSError as exc:
-        messagebox.showerror('Save Failed', f"Could not save student data: {exc}")
+            file.write(csv_text)
+    except (OSError, UnicodeError, ValueError) as exc:
+        messagebox.showerror('Save Failed', f"Could not export student data: {exc}")
         return
     messagebox.showinfo('Data Saved', 'Student data exported to students_data.txt.')
 
@@ -179,24 +180,14 @@ def save_to_file():
 def load_from_file():
     try:
         with open('students_data.txt', 'r', newline='', encoding='utf-8') as file:
-            rows = list(csv.reader(file))
+            csv_text = file.read()
 
-        if not rows:
-            messagebox.showinfo('No Data', 'The import file is empty.')
+        prepared_rows = parse_student_csv_text(csv_text)
+        if not prepared_rows:
+            messagebox.showinfo('No Data', 'The import file contains no student records.')
             return
 
-        prepared_rows = []
-        for line_number, data in enumerate(rows, start=1):
-            if len(data) != 8:
-                raise ValueError(f"Line {line_number} must contain a roll number, name, five marks, and an average.")
-            roll_number, name = data[0].strip(), data[1].strip()
-            if not roll_number or not name:
-                raise ValueError(f"Line {line_number} is missing a roll number or student name.")
-            marks = parse_marks(data[2:7])
-            average_marks = calculate_marks_average(marks)
-            prepared_rows.append((roll_number, name, *marks, average_marks))
-
-        # The context manager rolls the entire import back if any row conflicts.
+        # Insert only after the entire file has been validated; roll back on conflict.
         with conn:
             cursor.executemany('''
                 INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
@@ -205,7 +196,7 @@ def load_from_file():
     except FileNotFoundError:
         messagebox.showinfo('File Not Found', 'No previous data found.')
         return
-    except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.IntegrityError) as exc:
+    except (OSError, UnicodeError, ValueError, sqlite3.IntegrityError) as exc:
         messagebox.showerror('Import Failed', f"Student data was not imported: {exc}")
         return
 
