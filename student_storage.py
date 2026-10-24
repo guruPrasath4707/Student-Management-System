@@ -118,6 +118,12 @@ def _migrate_legacy_database(source_path: Path, target_path: Path) -> None:
         target_integrity = target_connection.execute("PRAGMA integrity_check").fetchone()
         if not target_integrity or target_integrity[0] != "ok":
             raise StorageError("The migrated database failed its integrity check.")
+
+        target_connection.close()
+        target_connection = None
+        source_connection.close()
+        source_connection = None
+        os.replace(temporary_path, target)
     except StorageError:
         raise
     except (OSError, sqlite3.DatabaseError) as exc:
@@ -129,15 +135,6 @@ def _migrate_legacy_database(source_path: Path, target_path: Path) -> None:
             target_connection.close()
         if source_connection is not None:
             source_connection.close()
-
-    try:
-        assert temporary_path is not None
-        os.replace(temporary_path, target)
-    except OSError as exc:
-        raise StorageError(
-            f"Could not publish migrated database to {target_path}: {exc}"
-        ) from exc
-    finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
