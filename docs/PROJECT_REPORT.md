@@ -122,7 +122,7 @@ The desktop application stores data in the per-user application-data directory:
 
 Set STUDENT_MANAGEMENT_DATA_DIR to override the data directory. When the destination does not exist, the storage module can copy a legacy students_database.db from the current working directory or beside the application using SQLite's backup API. Migration validates source integrity, leaves the source untouched, and does not overwrite an existing destination.
 
-A legacy-schema upgrade runs transactionally. Invalid historical rows cause a clear storage error and remain available for manual correction; they are not automatically discarded. Back up the database before running the application against valuable records.
+A legacy-schema upgrade runs transactionally. The upgrade validates historic identity and marks and recalculates averages. If a legacy row violates current input rules, the transaction is rolled back and the existing table remains available rather than discarding the record. The desktop UI highlights rows needing review and displays a warning; after the user corrects the marks/name, they close and reopen the app so the constrained-schema upgrade can complete. While the old schema is retained, new UI entries and edits are still validated, but database-level constraints are not enabled yet. Back up the database before running the application against valuable records.
 
 ## 11. User interface
 
