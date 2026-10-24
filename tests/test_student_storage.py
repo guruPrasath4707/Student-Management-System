@@ -11,6 +11,7 @@ from student_storage import (
     StorageError,
     connect_database,
     get_database_path,
+    insert_student_records,
 )
 
 
@@ -247,6 +248,66 @@ class DatabaseStorageTests(unittest.TestCase):
             with self.subTest(roll_number=roll_number, name=name):
                 with self.assertRaises(ValueError):
                     validate_student_identity(roll_number, name)
+
+
+    def test_bulk_insert_recomputes_averages_and_commits_all_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            connection = connect_database(Path(temp_dir) / "app.db")
+            try:
+                inserted = insert_student_records(
+                    connection,
+                    [
+                        ("S-A", "Student A", 10, 20, 30, 40, 50, 999),
+                        ("S-B", "Student B", 100, 90, 80, 70, 60, -20),
+                    ],
+                )
+                self.assertEqual(inserted, 2)
+                rows = connection.execute(
+                    "SELECT roll_number, average_marks FROM students ORDER BY roll_number"
+                ).fetchall()
+                self.assertEqual(rows, [("S-A", 30.0), ("S-B", 80.0)])
+            finally:
+                connection.close()
+
+    def test_bulk_insert_rolls_back_the_whole_batch_on_duplicate_key(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            connection = connect_database(Path(temp_dir) / "app.db")
+            try:
+                insert_student_records(
+                    connection, [("S-EXISTS", "Keep This Record", 1, 2, 3, 4, 5, 3)]
+                )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    insert_student_records(
+                        connection,
+                        [
+                            ("S-NEW", "Must Roll Back", 10, 20, 30, 40, 50, 30),
+                            ("S-EXISTS", "Duplicate", 20, 30, 40, 50, 60, 40),
+                        ],
+                    )
+                rows = connection.execute(
+                    "SELECT roll_number, name FROM students ORDER BY roll_number"
+                ).fetchall()
+                self.assertEqual(rows, [("S-EXISTS", "Keep This Record")])
+            finally:
+                connection.close()
+
+    def test_bulk_insert_validates_batch_before_any_database_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            connection = connect_database(Path(temp_dir) / "app.db")
+            try:
+                with self.assertRaisesRegex(ValueError, "Record 2"):
+                    insert_student_records(
+                        connection,
+                        [
+                            ("S-VALID", "Valid", 10, 20, 30, 40, 50, 30),
+                            ("S-INVALID", "Invalid", 10, 20, 30, 40, 101, 40),
+                        ],
+                    )
+                self.assertEqual(
+                    connection.execute("SELECT COUNT(*) FROM students").fetchone()[0], 0
+                )
+            finally:
+                connection.close()
 
 
 if __name__ == "__main__":
