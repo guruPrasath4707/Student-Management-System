@@ -165,6 +165,15 @@ while True:
             print("The data file contains no student records.")
             continue
 
+        # Never replace a record already present in the active in-memory store.
+        conflicting_rolls = {record[0] for record in loaded_records if record[0] in students_data}
+        if conflicting_rolls:
+            print(
+                f"Data load aborted: {len(conflicting_rolls)} roll number(s) already exist "
+                "in memory. No records were changed."
+            )
+            continue
+
         # Parsing validates the entire file before this loop changes the dictionary.
         for record in loaded_records:
             roll_number, name, *tail = record
