@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import messagebox
 import sqlite3
 
+from student_core import calculate_average as calculate_marks_average, parse_marks, validate_student_identity
+
 # Create a SQLite database connection
 conn = sqlite3.connect('students_database.db')
 cursor = conn.cursor()
@@ -23,12 +25,14 @@ conn.commit()
 
 
 def add_student():
-    roll_number = entry_roll.get()
-    name = entry_name.get()
-    marks = [float(entry_marks[i].get()) for i in range(5)]
+    try:
+        roll_number, name = validate_student_identity(entry_roll.get(), entry_name.get())
+        marks = parse_marks(entry.get() for entry in entry_marks)
+    except ValueError as exc:
+        messagebox.showerror('Invalid Input', str(exc))
+        return
 
-    average_marks = sum(marks) / len(marks)
-
+    average_marks = calculate_marks_average(marks)
     try:
         cursor.execute('''
             INSERT INTO students (roll_number, name, marks_subject1, marks_subject2, marks_subject3, marks_subject4, marks_subject5, average_marks)
@@ -36,9 +40,10 @@ def add_student():
         ''', (roll_number, name, *marks, average_marks))
         conn.commit()
         messagebox.showinfo('Success', 'Student added successfully!')
+        clear_entries()
+        display_students()
     except sqlite3.IntegrityError:
         messagebox.showerror('Error', 'Student with the same roll number already exists!')
-
 
 def display_students():
     cursor.execute('SELECT * FROM students')
@@ -49,6 +54,12 @@ def display_students():
         result_text.set(result_text.get() +
                        f"\nRoll Number: {student[0]}, Name: {student[1]}, Average Marks: {student[7]:.2f}\n")
 
+
+def clear_entries():
+    entry_roll.delete(0, tk.END)
+    entry_name.delete(0, tk.END)
+    for entry in entry_marks:
+        entry.delete(0, tk.END)
 
 # Create the main window
 root = tk.Tk()
