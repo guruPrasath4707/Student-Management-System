@@ -114,6 +114,44 @@ def _validate_legacy_schema(connection: sqlite3.Connection, source: Path) -> Non
         )
 
 
+def _validate_current_schema(connection: sqlite3.Connection) -> None:
+    """Refuse a schema-version marker that does not match the constrained schema."""
+    _validate_legacy_schema(connection, Path("the current database"))
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='students'"
+    ).fetchone()
+    if row is None or not row[0]:
+        raise StorageError("The current database is missing the students table definition.")
+
+    normalized = "".join(row[0].lower().split())
+    required_fragments = [
+        "roll_numbertextprimarykeynotnull",
+        "check(length(trim(roll_number))>0)",
+        "nametextnotnull",
+        "check(length(trim(name))>0)",
+    ]
+    for column in (
+        "marks_subject1",
+        "marks_subject2",
+        "marks_subject3",
+        "marks_subject4",
+        "marks_subject5",
+    ):
+        required_fragments.append(
+            f"check(typeof({column})in('integer','real')and{column}between0and100)"
+        )
+    required_fragments.append(
+        "check(typeof(average_marks)in('integer','real')andaverage_marksbetween0and100"
+        "andabs(average_marks-((marks_subject1+marks_subject2+marks_subject3+"
+        "marks_subject4+marks_subject5)/5.0))<0.00001)"
+    )
+    if any(fragment not in normalized for fragment in required_fragments):
+        raise StorageError(
+            "The database marks its schema as current, but the table is missing required "
+            "constraints. Back up the database and review its schema before continuing."
+        )
+
+
 def _upgrade_schema(connection: sqlite3.Connection) -> None:
     """Upgrade the original unconstrained table transactionally without dropping invalid data."""
     version = connection.execute("PRAGMA user_version").fetchone()[0]
@@ -121,12 +159,23 @@ def _upgrade_schema(connection: sqlite3.Connection) -> None:
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='students'"
     ).fetchone() is not None
 
+    if version > SCHEMA_VERSION:
+        raise StorageError(
+            f"The database schema version ({version}) is newer than this application supports "
+            f"({SCHEMA_VERSION}). Upgrade the application before opening this database."
+        )
+    if version == SCHEMA_VERSION:
+        if not table_exists:
+            raise StorageError(
+                "The database claims to use the current schema version but has no students table."
+            )
+        _validate_current_schema(connection)
+        return
+
     if not table_exists:
         connection.execute(STUDENTS_SCHEMA)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         connection.commit()
-        return
-    if version >= SCHEMA_VERSION:
         return
 
     temporary_table = "students__migration_v1"
