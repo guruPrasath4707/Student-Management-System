@@ -1,8 +1,22 @@
 import csv
+from student_core import calculate_average, grade_for_average, parse_marks, validate_student_identity
 from student_data_io import parse_student_csv_text, serialize_student_rows
 
 # Initialize an empty dictionary to store student information
 students_data = {}
+
+def prompt_marks(prompt_prefix):
+    """Read and validate exactly five subject marks without crashing the menu."""
+    entered = [
+        input(f"{prompt_prefix} {subject_num}: ")
+        for subject_num in range(1, 6)
+    ]
+    try:
+        return parse_marks(entered)
+    except ValueError as exc:
+        print(f"Invalid marks: {exc}")
+        return None
+
 
 # Main menu loop
 while True:
@@ -27,29 +41,29 @@ while True:
 
     # Perform actions based on user choice
     if choice == '1':
-        # Get input from the user
         roll_number = input("Enter student's roll number: ")
         name = input("Enter student's name: ")
+        try:
+            roll_number, name = validate_student_identity(roll_number, name)
+        except ValueError as exc:
+            print(f"Invalid student details: {exc}")
+            continue
+        if roll_number in students_data:
+            print(f"A student with roll number {roll_number} already exists.")
+            continue
 
-        # Initialize an empty list to store marks
-        marks_list = []
+        marks_list = prompt_marks("Enter marks for subject")
+        if marks_list is None:
+            print("Student was not added.")
+            continue
 
-        # Loop to take marks input for 5 subjects
-        for subject_num in range(1, 6):
-            marks = float(input(f"Enter marks for subject {subject_num}: "))
-            marks_list.append(marks)
-
-        # Calculate average marks
-        average_marks = sum(marks_list) / len(marks_list)
-
-        # Store student information in a dictionary
-        student_info = {'Name': name, 'Marks': marks_list, 'Average Marks': average_marks}
-
-        # Add the student to the main dictionary using roll number as key
-        students_data[roll_number] = student_info
-
+        average_marks = calculate_average(marks_list)
+        students_data[roll_number] = {
+            'Name': name,
+            'Marks': marks_list,
+            'Average Marks': average_marks,
+        }
         print("\nStudent added successfully!\n")
-
     elif choice == '2':
         # Check if there are any students in the system
         if not students_data:
@@ -71,27 +85,30 @@ while True:
             print(f"\nNo student found with Roll Number {roll_number}.\n")
 
     elif choice == '4':
-        # Update student information
-        roll_number = input("Enter the roll number to update: ")
-        if roll_number in students_data:
-            name = input("Enter updated name: ")
-            
-            # Loop to take updated marks input for 5 subjects
-            updated_marks_list = []
-            for subject_num in range(1, 6):
-                updated_marks = float(input(f"Enter updated marks for subject {subject_num}: "))
-                updated_marks_list.append(updated_marks)
+        roll_number = input("Enter the roll number to update: ").strip()
+        if not roll_number:
+            print("Roll number is required.")
+            continue
+        if roll_number not in students_data:
+            print(f"No student found with Roll Number {roll_number}.")
+            continue
 
-            # Calculate updated average marks
-            updated_average_marks = sum(updated_marks_list) / len(updated_marks_list)
-            students_data[roll_number]['Name'] = name
-            students_data[roll_number]['Marks'] = updated_marks_list
-            students_data[roll_number]['Average Marks'] = updated_average_marks
+        name = input("Enter updated name: ")
+        try:
+            roll_number, name = validate_student_identity(roll_number, name)
+        except ValueError as exc:
+            print(f"Invalid student details: {exc}")
+            continue
+        updated_marks_list = prompt_marks("Enter updated marks for subject")
+        if updated_marks_list is None:
+            print("Student information was not changed.")
+            continue
 
-            print(f"\nStudent information for Roll Number {roll_number} updated successfully.\n")
-        else:
-            print(f"\nNo student found with Roll Number {roll_number}.\n")
-
+        updated_average_marks = calculate_average(updated_marks_list)
+        students_data[roll_number]['Name'] = name
+        students_data[roll_number]['Marks'] = updated_marks_list
+        students_data[roll_number]['Average Marks'] = updated_average_marks
+        print(f"\nStudent information for Roll Number {roll_number} updated successfully.\n")
     elif choice == '5':
         # Calculate the average marks of all students
         if not students_data:
@@ -109,10 +126,7 @@ while True:
             print("\nGrades of all students:")
             for roll, info in students_data.items():
                 average_marks = info['Average Marks']
-                grade = 'A' if average_marks >= 90 else \
-                        'B' if 80 <= average_marks < 90 else \
-                        'C' if 70 <= average_marks < 80 else \
-                        'D' if 60 <= average_marks < 70 else 'F'
+                grade = grade_for_average(average_marks)
                 print(f"Roll Number: {roll}, Name: {info['Name']}, Grade: {grade}")
 
     elif choice == '7':
@@ -191,10 +205,7 @@ while True:
                 print(f"Name: {info['Name']}")
                 print(f"Average Marks: {info['Average Marks']:.2f}")
                 average_marks = info['Average Marks']
-                grade = 'A' if average_marks >= 90 else \
-                        'B' if 80 <= average_marks < 90 else \
-                        'C' if 70 <= average_marks < 80 else \
-                        'D' if 60 <= average_marks < 70 else 'F'
+                grade = grade_for_average(average_marks)
                 print(f"Grade: {grade}")
                 print("Subject-wise Marks:")
                 for subject_num, marks in enumerate(info['Marks'], start=1):
