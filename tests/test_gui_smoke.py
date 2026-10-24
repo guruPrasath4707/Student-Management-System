@@ -20,10 +20,6 @@ import runpy
 import tkinter as tk
 from tkinter import messagebox
 
-def bounded_mainloop(self, n=0):
-    self.after(150, self.destroy)
-    return tk.Misc.mainloop.__wrapped__(self, n)
-
 original_mainloop = tk.Misc.mainloop
 def smoke_mainloop(self, n=0):
     self.after(150, self.destroy)
