@@ -5,6 +5,7 @@ A small Python student-record application with a Tkinter desktop interface and S
 ## Current application
 
 - **`Student.py`** — desktop UI with create, search, update, delete, listing, grade, report-card, and text-file import/export actions.
+- **`student_data_io.py`** — shared CSV import/export logic, including compatibility with legacy unquoted names and average recomputation.
 - **`Student Management System.py`** — older terminal-menu version that keeps its data in memory until saved.
 - **`Student Management System Final.py`** — earlier minimal Tkinter variant.
 - **`Student_Management_System [ Final Edited ].docx`** — project report/documentation artifact.
@@ -33,6 +34,8 @@ The app opens a desktop window and creates/uses `students_database.db` relative 
 For a Linux desktop session, ensure Tkinter is installed and a display server is available. A headless shell or server cannot show a Tkinter window.
 
 ## Tests
+
+CSV import validates all rows before writing, rejects malformed or duplicate roll numbers in a file, and recalculates averages from the five subject marks. The older terminal export's unquoted CSV rows are supported where their trailing marks/average fields make the record unambiguous.
 
 Run the validation and grading unit tests:
 
