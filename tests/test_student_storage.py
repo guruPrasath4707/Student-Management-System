@@ -2,6 +2,7 @@
 
 import sqlite3
 import tempfile
+from contextlib import closing
 import unittest
 from pathlib import Path
 
@@ -115,7 +116,7 @@ class DatabaseStorageTests(unittest.TestCase):
                 connection.close()
 
             self.assertTrue(source.is_file(), "Migration must leave the source untouched.")
-            with sqlite3.connect(source) as original:
+            with closing(sqlite3.connect(source)) as original:
                 self.assertEqual(
                     original.execute("SELECT count(*) FROM students").fetchone()[0], 1
                 )
@@ -156,8 +157,9 @@ class DatabaseStorageTests(unittest.TestCase):
             base = Path(temp_dir)
             source = base / "wrong-schema.db"
             target = base / "app.db"
-            with sqlite3.connect(source) as connection:
+            with closing(sqlite3.connect(source)) as connection:
                 connection.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+                connection.commit()
 
             with self.assertRaisesRegex(StorageError, "no students table"):
                 connect_database(target, legacy_path=source)
@@ -190,7 +192,7 @@ class DatabaseStorageTests(unittest.TestCase):
             finally:
                 connection.close()
 
-            with sqlite3.connect(source) as original:
+            with closing(sqlite3.connect(source)) as original:
                 self.assertEqual(
                     original.execute("SELECT average_marks FROM students").fetchone()[0], 99
                 )
@@ -240,12 +242,12 @@ class DatabaseStorageTests(unittest.TestCase):
             finally:
                 connection.close()
 
-            with sqlite3.connect(source) as original:
+            with closing(sqlite3.connect(source)) as original:
                 self.assertEqual(
                     original.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
                 )
             self.assertTrue(target.exists())
-            with sqlite3.connect(target) as copied:
+            with closing(sqlite3.connect(target)) as copied:
                 self.assertEqual(
                     copied.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
                 )
@@ -281,7 +283,7 @@ class DatabaseStorageTests(unittest.TestCase):
                 connection.close()
 
             # The read-only source still keeps the pre-repair row intact.
-            with sqlite3.connect(source) as original:
+            with closing(sqlite3.connect(source)) as original:
                 self.assertEqual(
                     original.execute("SELECT marks_subject5 FROM students").fetchone()[0], 101
                 )
@@ -358,13 +360,14 @@ class DatabaseStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / "mislabeled.db"
             self.create_database(target, "S-OLD", "Original Record")
-            with sqlite3.connect(target) as connection:
+            with closing(sqlite3.connect(target)) as connection:
                 connection.execute("PRAGMA user_version = 1")
+                connection.commit()
 
             with self.assertRaisesRegex(StorageError, "missing required constraints"):
                 connect_database(target)
 
-            with sqlite3.connect(target) as unchanged:
+            with closing(sqlite3.connect(target)) as unchanged:
                 self.assertEqual(
                     unchanged.execute("SELECT roll_number, name FROM students").fetchone(),
                     ("S-OLD", "Original Record"),
@@ -379,8 +382,9 @@ class DatabaseStorageTests(unittest.TestCase):
             target = Path(temp_dir) / "future.db"
             connection = connect_database(target)
             connection.close()
-            with sqlite3.connect(target) as newer:
+            with closing(sqlite3.connect(target)) as newer:
                 newer.execute("PRAGMA user_version = 2")
+                newer.commit()
 
             with self.assertRaisesRegex(StorageError, "newer than this application supports"):
                 connect_database(target)
