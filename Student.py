@@ -4,7 +4,7 @@ from tkinter import ttk, messagebox
 import tkinter.font as tkfont
 import sqlite3
 
-from student_core import calculate_average, grade_for_average, parse_marks
+from student_core import calculate_average as calculate_marks_average, grade_for_average, parse_marks
 
 # Create a SQLite database connection
 conn = sqlite3.connect('students_database.db')
@@ -41,7 +41,7 @@ def add_student():
         messagebox.showerror('Invalid Input', str(exc))
         return
 
-    average_marks = calculate_average(marks)
+    average_marks = calculate_marks_average(marks)
 
     try:
         cursor.execute('''
@@ -106,7 +106,7 @@ def update_student():
         messagebox.showerror('Invalid Input', str(exc))
         return
 
-    average_marks = calculate_average(marks)
+    average_marks = calculate_marks_average(marks)
     cursor.execute('''
         UPDATE students
         SET name=?, marks_subject1=?, marks_subject2=?, marks_subject3=?, marks_subject4=?, marks_subject5=?, average_marks=?
@@ -193,7 +193,7 @@ def load_from_file():
             if not roll_number or not name:
                 raise ValueError(f"Line {line_number} is missing a roll number or student name.")
             marks = parse_marks(data[2:7])
-            average_marks = calculate_average(marks)
+            average_marks = calculate_marks_average(marks)
             prepared_rows.append((roll_number, name, *marks, average_marks))
 
         # The context manager rolls the entire import back if any row conflicts.
