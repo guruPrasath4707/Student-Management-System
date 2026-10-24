@@ -52,15 +52,34 @@ def smoke_mainloop(self, n=0):
     def repair_selected_row():
         tree = app_globals["student_tree"]
         rows = tree.get_children()
-        if len(rows) != 1:
-            raise AssertionError(f"Expected one synthetic row, found {len(rows)}")
-        tree.selection_set(rows[0])
+        if len(rows) != 2:
+            raise AssertionError(f"Expected two synthetic rows, found {len(rows)}")
+
+        repair_row = next(
+            (item for item in rows if tree.item(item, "values")[1] == "Synthetic Legacy Row"),
+            None,
+        )
+        if repair_row is None:
+            raise AssertionError("The legacy row selected for repair was not displayed.")
+        tree.selection_set(repair_row)
         app_globals["load_selected_student"]()
         roll_entry = app_globals["entry_roll"]
         roll_entry.delete(0, "end")
         roll_entry.insert(0, "S-REPAIRED")
         app_globals["update_student"]()
         print("GUI_LEGACY_ROW_REPAIRED")
+
+        remaining = tree.get_children()
+        delete_row = next(
+            (item for item in remaining if tree.item(item, "values")[1] == "Synthetic Delete Row"),
+            None,
+        )
+        if delete_row is None:
+            raise AssertionError("The legacy row selected for deletion was not displayed.")
+        tree.selection_set(delete_row)
+        app_globals["load_selected_student"]()
+        app_globals["remove_student"]()
+        print("GUI_LEGACY_ROW_DELETED")
 
     self.after(100, repair_selected_row)
     self.after(500, self.destroy)
@@ -70,6 +89,7 @@ tk.Misc.mainloop = smoke_mainloop
 messagebox.showwarning = lambda *args, **kwargs: print("LEGACY_REVIEW_WARNING_SHOWN")
 messagebox.showinfo = lambda *args, **kwargs: None
 messagebox.showerror = lambda *args, **kwargs: print("GUI_ERROR")
+messagebox.askyesno = lambda *args, **kwargs: True
 app_script = os.path.abspath(os.environ["STUDENT_MANAGEMENT_APP_SCRIPT"])
 sys.path.insert(0, os.path.dirname(app_script))
 runpy.run_path(app_script, run_name="__main__")
@@ -137,9 +157,12 @@ class TkinterStartupSmokeTests(unittest.TestCase):
                         average_marks REAL
                     )
                 """)
-                legacy.execute(
+                legacy.executemany(
                     "INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (None, "Synthetic Legacy Row", 10, 20, 30, 40, 50, 30),
+                    [
+                        (None, "Synthetic Legacy Row", 10, 20, 30, 40, 50, 30),
+                        (" ", "Synthetic Delete Row", 20, 30, 40, 50, 60, 40),
+                    ],
                 )
                 legacy.commit()
 
@@ -161,6 +184,7 @@ class TkinterStartupSmokeTests(unittest.TestCase):
             )
             self.assertIn("LEGACY_REVIEW_WARNING_SHOWN", repair_run.stdout)
             self.assertIn("GUI_LEGACY_ROW_REPAIRED", repair_run.stdout)
+            self.assertIn("GUI_LEGACY_ROW_DELETED", repair_run.stdout)
             self.assertNotIn("GUI_ERROR", repair_run.stdout)
 
             with closing(sqlite3.connect(database_path)) as repaired:
@@ -168,8 +192,8 @@ class TkinterStartupSmokeTests(unittest.TestCase):
                 self.assertEqual(
                     repaired.execute(
                         "SELECT roll_number, name, marks_subject5, average_marks FROM students"
-                    ).fetchone(),
-                    ("S-REPAIRED", "Synthetic Legacy Row", 50.0, 30.0),
+                    ).fetchall(),
+                    [("S-REPAIRED", "Synthetic Legacy Row", 50.0, 30.0)],
                 )
 
             # A normal subsequent launch should now be able to finish the constrained upgrade.
@@ -198,7 +222,10 @@ class TkinterStartupSmokeTests(unittest.TestCase):
 
             # The source file remains untouched while the repaired copy becomes the active store.
             with closing(sqlite3.connect(legacy_path)) as original:
-                self.assertIsNone(original.execute("SELECT roll_number FROM students").fetchone()[0])
+                self.assertEqual(
+                    original.execute("SELECT roll_number FROM students ORDER BY rowid").fetchall(),
+                    [(None,), (" ",)],
+                )
 
 
 if __name__ == "__main__":
