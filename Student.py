@@ -106,11 +106,18 @@ def display_students(sort_by_average=False):
         )
 
     if "result_label" in globals():
-        if legacy_needs_review:
+        if legacy_needs_review and review_count:
             result_label.configure(
                 text=(
                     f"Legacy database needs review: {review_count} record(s) highlighted. "
                     "Correct them, then close and reopen the app to finish the safe upgrade."
+                )
+            )
+        elif legacy_needs_review:
+            result_label.configure(
+                text=(
+                    "Legacy records have been corrected. Close and reopen the app to finish "
+                    "the safe database upgrade."
                 )
             )
         else:
