@@ -29,7 +29,7 @@ From the repository directory:
 python Student.py
 ```
 
-The app opens a desktop window and creates/uses `students_database.db` relative to the process's current working directory. Run it from the repository directory if you intend to use the bundled database. Back up the database before testing imports, edits, or deletion.
+The app stores its database in the current user's application-data directory instead of writing persistent records into the source checkout. On Windows it uses `%APPDATA%/StudentManagementSystem/`, on macOS `~/Library/Application Support/StudentManagementSystem/`, and on Linux `$XDG_DATA_HOME/StudentManagementSystem/` (or `~/.local/share/StudentManagementSystem/` if `XDG_DATA_HOME` is unset). Set `STUDENT_MANAGEMENT_DATA_DIR` to override the data directory. On first launch, if the destination database does not already exist, the app attempts a one-time SQLite backup migration from a legacy `students_database.db` in the working directory or beside the application. Migration leaves the source file unchanged and refuses to overwrite an existing destination. Back up records before testing imports, edits, or deletion.
 
 For a Linux desktop session, ensure Tkinter is installed and a display server is available. A headless shell or server cannot show a Tkinter window.
 
