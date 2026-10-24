@@ -11,6 +11,8 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from student_storage import DATABASE_FILENAME, connect_database
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # CI's Windows 3.12 job has a desktop session. End the event loop automatically
@@ -38,6 +40,12 @@ runpy.run_path("Student.py", run_name="__main__")
 class TkinterStartupSmokeTests(unittest.TestCase):
     def test_desktop_app_constructs_and_creates_valid_empty_database(self):
         with tempfile.TemporaryDirectory(prefix="student-management-gui-") as temp_dir:
+            database_path = Path(temp_dir) / DATABASE_FILENAME
+            # Create the current schema first, so the app does not migrate the
+            # tracked legacy database from the repository directory.
+            connection = connect_database(database_path)
+            connection.close()
+
             environment = os.environ.copy()
             environment["STUDENT_MANAGEMENT_DATA_DIR"] = temp_dir
             result = subprocess.run(
@@ -56,7 +64,6 @@ class TkinterStartupSmokeTests(unittest.TestCase):
                 msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
             )
 
-            database_path = Path(temp_dir) / "students_database.db"
             self.assertTrue(database_path.is_file(), "The app did not create its user-data database.")
             with closing(sqlite3.connect(database_path)) as connection:
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
